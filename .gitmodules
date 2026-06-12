@@ -1,0 +1,3 @@
+[submodule "Demos"]
+	path = Demos
+	url = https://github.com/khazaddim/Demos.git
