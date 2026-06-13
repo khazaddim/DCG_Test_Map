@@ -18,6 +18,17 @@ DrawingScale becomes useful when the image or shapes are part of a larger coordi
 5. A projected/perspective result that you still want to position, center, or scale cleanly
 
 The same drawing code to work in a window, plot, or different viewport size
+
+**DrawingScale is mostly for making drawings/images adapt to different coordinate and display conditions.**
+
+different window sizes
+different zoom levels
+different coordinate ranges
+flipped axes
+matching plot/world coordinates
+keeping object proportions consistent
+moving between screen pixels and model units
+
 """
 
 import dearcygui as dcg
