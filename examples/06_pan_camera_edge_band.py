@@ -9,10 +9,35 @@ avatar pushes into the "edge band" near a viewport edge. Inside that band the
 camera catches up enough to keep the avatar at the band boundary. The camera is
 clamped to the world bounds so it never reveals empty space past the map edges.
 
-Mental model:
+This Code Mental model:
     world_xy            -> position in the full map (0..WORLD_W, 0..WORLD_H)
     DrawingScale.origin -> (-camera_x, -camera_y) shifts world into viewport
     viewport_xy         -> world_xy - camera_xy, visible inside DrawInWindow
+
+
+General notes on DrawingScale:
+
+
+DrawingScale is not a layout region box.  
+It is a transform node (an affine coordinate frame) in the draw tree.
+
+What that means:
+1. It has no intrinsic width/height clipping area.
+2. Its origin is a position in the parent coordinate system.
+3. Its scales convert child-local coordinates into parent coordinates.
+4. All child draw items are transformed by it.
+
+If a DrawingScale is parented under DrawInWindow, you can move its origin and place that whole child rig anywhere in that DrawInWindow coordinate space.
+
+What still limits visibility:
+1. The DrawInWindow viewport bounds.
+2. Any explicit clipping nodes you add (like DrawingClip).
+3. Optional controller clamps in your own movement code.
+
+Mental model:
+1. DrawInWindow = the visible canvas.
+2. DrawingScale = movable local coordinate frame attached to that canvas.
+3. DrawCircle/DrawLine/etc under it = geometry expressed in local coordinates around that frame.
 """
 
 import dearcygui as dcg
