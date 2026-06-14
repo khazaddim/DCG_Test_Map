@@ -1,6 +1,6 @@
 ---
 name: dcg-animation-patterns
-description: 'DearCyGui (dcg) 2D animation, drawing-coordinate, and camera-control patterns. Use when building maps, sprite-like avatars, walk cycles, panning/zooming canvases, level-of-detail overlays, arrow-key controllers, or anything that mixes pixel space with a world coordinate system using DrawInWindow, DrawInPlot, DrawingScale, DrawingClip, DrawStream, or KeyDownHandler. For perspective/homography/fullscreen tilted maps, also load dcg-perspective-map-patterns. Do NOT use for shared-OpenGL texture rendering (see /memories/repo/dearcygui-shared-gl.md instead).'
+description: 'DearCyGui (dcg) 2D animation, drawing-coordinate, and camera-control patterns. Use when building maps, sprite-like avatars, walk cycles, panning/zooming canvases, level-of-detail overlays, arrow-key controllers, or anything that mixes pixel space with a world coordinate system using DrawInWindow, DrawInPlot, DrawingScale, DrawingClip, DrawStream, or KeyDownHandler. For perspective/homography/fullscreen tilted maps, also load dcg-perspective-map-patterns.'
 ---
 
 # DearCyGui Animation & Drawing Patterns
@@ -169,8 +169,4 @@ Pick the smallest combination that satisfies the goal:
 
 ## Out of scope
 
-This skill covers 2D CPU-side DCG drawing. For shared-OpenGL / ModernGL
-texture rendering (e.g. a rotating cube into a `dcg.Texture`), see the
-repo-memory note `/memories/repo/dearcygui-shared-gl.md` — that domain has
-its own threading rules (`dcg.CustomHandler` on the main thread, not
-`dcg.RenderHandler`).
+This skill covers 2D CPU-side DCG drawing.
