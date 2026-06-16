@@ -1,0 +1,25 @@
+# Agents
+
+This repository includes local skills for GitHub Copilot coding agents.
+
+## Available Skills
+
+- `dcg-animation-patterns`: DearCyGui 2D animation, coordinate systems, camera control, DrawStream, and edge-band panning patterns.
+- `dcg-perspective-map-patterns`: Perspective map rendering, homography transforms, clipped polygons/lines, and fullscreen tilted map patterns.
+- `openspec-epub-workflow`: Generate review-ready markdown book folders and build EPUB files from OpenSpec changes, project files, or diffs using `mark2epub.py`.
+
+## Skill Paths
+
+- `.github/skills/animation_patterns/SKILL.md`
+- `.github/skills/perspective_map_patterns/SKILL.md`
+- `.github/skills/openspec-epub-workflow/SKILL.md`
+
+## EPUB Workflow Assets
+
+- Helper script: `.github/skills/openspec-epub-workflow/openspec_to_epub_source.py`
+- Converter script: `mark2epub.py`
+
+## Usage Notes
+
+- Prefer the workspace Python interpreter when running helper scripts.
+- Keep generated EPUB outputs and generated source folders out of version control unless explicitly requested.
