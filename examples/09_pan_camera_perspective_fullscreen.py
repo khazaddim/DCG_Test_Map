@@ -26,6 +26,8 @@ exactly on [0,W] x [0,H], filling the whole viewport. So we just:
   2. Extend the ground rect well past the world bounds so the trapezoid
      always has content to clip — no green-edge cliffs even when the camera
      is near a world border.
+    3. Increase the world-space depth represented by the source viewport as
+         inclination rises, anchored at the near edge so more distant map appears.
 
 Pattern reference: same as `07`. This is one extra step on top of Pattern 6
 of the `dcg-animation-patterns` skill (edge-band pan camera).
@@ -88,6 +90,20 @@ def depth_scale_at(y: float, a: float) -> float:
         return 1.0
     v = y / VIEW_H
     return (1.0 - 2.0 * a) / (1.0 - 2.0 * a * v)
+
+
+def depth_extent_at(a: float) -> float:
+    """World-depth multiplier revealed by the perspective inclination."""
+    return 1.0 / (1.0 - a)
+
+
+def world_to_source(wx: float, wy: float, cam_x: float, cam_y: float,
+                    zoom: float, a: float) -> tuple[float, float]:
+    x = (wx - cam_x) * zoom
+    base_y = (wy - cam_y) * zoom
+    extent = depth_extent_at(a)
+    y = VIEW_H - (VIEW_H - base_y) / extent
+    return x, y
 
 
 # -----------------------------------------------------------------------------
@@ -244,7 +260,8 @@ def _circle_polygon(cx: float, cy: float, r: float, n: int = CIRCLE_SEGMENTS):
 
 
 def _project_world_polygon(pts, cam_x, cam_y, zoom, a, halfplanes):
-    view_pts = [((wx - cam_x) * zoom, (wy - cam_y) * zoom) for (wx, wy) in pts]
+    view_pts = [world_to_source(wx, wy, cam_x, cam_y, zoom, a)
+                for (wx, wy) in pts]
     clipped = clip_polygon_halfplanes(view_pts, halfplanes)
     if len(clipped) < 3:
         return None
@@ -290,8 +307,8 @@ def render_perspective(context: dcg.Context, parent: dcg.DrawingList,
                         fill=fill, color=edge, thickness=thickness)
 
     for (p1, p2, color, thickness) in model.lines:
-        a0 = ((p1[0] - cam_x) * zoom, (p1[1] - cam_y) * zoom)
-        a1 = ((p2[0] - cam_x) * zoom, (p2[1] - cam_y) * zoom)
+        a0 = world_to_source(*p1, cam_x, cam_y, zoom, a)
+        a1 = world_to_source(*p2, cam_x, cam_y, zoom, a)
         clipped = clip_line_halfplanes(a0, a1, halfplanes)
         if clipped is None:
             continue
@@ -309,12 +326,11 @@ def render_perspective(context: dcg.Context, parent: dcg.DrawingList,
                         fill=fill, color=edge, thickness=thickness)
 
     for (pos, text, size, color) in model.texts:
-        vx = (pos[0] - cam_x) * zoom
-        vy = (pos[1] - cam_y) * zoom
+        vx, vy = world_to_source(*pos, cam_x, cam_y, zoom, a)
         if not inside_halfplanes((vx, vy), halfplanes):
             continue
         sx, sy = project_xy(vx, vy, a)
-        scale = depth_scale_at(vy, a) * zoom
+        scale = depth_scale_at(vy, a) * zoom / depth_extent_at(a)
         new_size = -max(8.0, abs(size) * scale)
         dcg.DrawText(context, parent=parent, pos=(sx, sy),
                      text=text, size=new_size, color=color)
@@ -371,16 +387,19 @@ class PerspectivePanController:
         self.px = max(AVATAR_RADIUS, min(WORLD_W - AVATAR_RADIUS, self.px + dx))
         self.py = max(AVATAR_RADIUS, min(WORLD_H - AVATAR_RADIUS, self.py + dy))
 
-        screen_x = (self.px - self.cam_x) * self.zoom
-        screen_y = (self.py - self.cam_y) * self.zoom
+        a = self._a_from_angle()
+        screen_x, screen_y = world_to_source(
+            self.px, self.py, self.cam_x, self.cam_y, self.zoom, a)
         if screen_x < EDGE_BAND:
             self.cam_x -= (EDGE_BAND - screen_x) / self.zoom
         elif screen_x > VIEW_W - EDGE_BAND:
             self.cam_x += (screen_x - (VIEW_W - EDGE_BAND)) / self.zoom
         if screen_y < EDGE_BAND:
-            self.cam_y -= (EDGE_BAND - screen_y) / self.zoom
+            self.cam_y -= ((EDGE_BAND - screen_y)
+                           * depth_extent_at(a) / self.zoom)
         elif screen_y > VIEW_H - EDGE_BAND:
-            self.cam_y += (screen_y - (VIEW_H - EDGE_BAND)) / self.zoom
+            self.cam_y += ((screen_y - (VIEW_H - EDGE_BAND))
+                           * depth_extent_at(a) / self.zoom)
 
         self.cam_x = self._clamp_cam_x(self.cam_x)
         self.cam_y = self._clamp_cam_y(self.cam_y)
@@ -405,6 +424,7 @@ class PerspectivePanController:
             f"camera=({self.cam_x:.0f},{self.cam_y:.0f})  "
             f"zoom={self.zoom:.2f}x  "
             f"angle={self.angle_deg:.1f} deg  "
+            f"depth={depth_extent_at(a):.2f}x  "
             f"a={a:.3f}"
         )
 
@@ -421,8 +441,9 @@ def build_ui(context: dcg.Context) -> None:
             context,
             value="Arrow keys move the avatar; sliders tilt and zoom. Unlike the "
                   "previous example, world content fills the whole viewport — no "
-                  "dark corner wedges. The mapped world area is still bordered by "
-                  "the yellow rectangle.",
+                "dark corner wedges. Increasing inclination reveals more map "
+                "toward the horizon. The mapped world area is still bordered "
+                "by the yellow rectangle.",
             wrap=VIEW_W,
         )
         status = dcg.Text(context, value="")
