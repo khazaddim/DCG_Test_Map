@@ -29,6 +29,7 @@ python /absolute/path/to/examples/07_pan_camera_perspective_tilt.py
 python /absolute/path/to/examples/08_Camera_tilt_simple.py
 python /absolute/path/to/examples/09_pan_camera_perspective_fullscreen.py
 python /absolute/path/to/examples/10_pan_camera_perspective_rotation.py
+python /absolute/path/to/examples/11_dearcygui_cpu_3d_map.py
 ```
 
 ## What the examples cover
@@ -43,6 +44,7 @@ python /absolute/path/to/examples/10_pan_camera_perspective_rotation.py
 - `08_Camera_tilt_simple.py` isolates the basic rectangle-to-trapezoid transform
 - `09_pan_camera_perspective_fullscreen.py` fills the viewport and reveals more world depth with inclination
 - `10_pan_camera_perspective_rotation.py` combines centered inclination, world rotation, inverse-projected camera tracking, and flicker-free double buffering
+- `11_dearcygui_cpu_3d_map.py` implements a true CPU-side 3D camera, raised box meshes, clipping, culling, shading, and painter-sorted faces using only DearCyGui drawing primitives
 
 ## Perspective map learning path
 
@@ -67,5 +69,11 @@ The repository-local
 [`dcg-perspective-map-patterns`](.github/skills/perspective_map_patterns/SKILL.md)
 skill contains the reusable formulas, implementation patterns, anti-patterns,
 and cheap numerical validation checks behind these demos.
+
+Demo `11` is the next architectural step when map objects need real height. It
+stores geometry as `(x, y, z)`, projects it through a pinhole camera, and gives
+DearCyGui the resulting 2D faces. Its painter ordering is intended for separated
+convex tabletop objects; intersecting meshes would require face splitting or a
+renderer with a per-pixel depth buffer.
 
 For the larger reference demo, inspect `Demos/main_demo/drawings.py`.

@@ -25,6 +25,12 @@ container choices for the map prototype.
   - Combines rotation, inclination-dependent view depth, zoom, and edge-band panning
   - Uses a rotation slider spanning -180 to 180 degrees
 
+- `11_dearcygui_cpu_3d_map.py`
+  - Replaces the planar homography with a true CPU-side 3D pinhole camera
+  - Projects raised box meshes with near-plane clipping, back-face culling, face shading, and painter ordering
+  - Uses only DearCyGui 2D polygons and lines; no ModernGL or other GPU renderer
+  - Retains atomic front/back drawing buffers while pitch, yaw, zoom, or the player piece changes
+
 ## Suggested comparison
 
 If the game map wants built-in panning and zooming, start with `02_draw_in_plot_zoom_levels.py`.
