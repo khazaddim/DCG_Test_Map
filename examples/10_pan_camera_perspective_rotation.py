@@ -1,8 +1,11 @@
 """Full-screen perspective map with inclination, zoom, and rotation.
 
-This extends demo 09 with a rotation transform in source space. World points
-are first mapped through the camera and inclination-dependent depth extent,
-then rotated around the viewport center, clipped, and projected.
+This extends demo 09 with a world-space rotation around the camera focus.
+Inclination and rotation share that central anchor, and the source transform
+normalizes the homography scale at the focus. World points are rotated first,
+then mapped through the inclination-dependent depth extent, clipped, and
+projected. This keeps the map and its pieces stable around the play area while
+retaining perspective compression toward the horizon.
 """
 
 import math
@@ -37,6 +40,19 @@ def project_xy(x: float, y: float, a: float) -> tuple[float, float]:
     return sx, sy
 
 
+def unproject_xy(sx: float, sy: float, a: float) -> tuple[float, float]:
+    if a <= 0.0:
+        return sx, sy
+    screen_u = sx / VIEW_W
+    screen_v = sy / VIEW_H
+    perspective_scale = 1.0 - 2.0 * a
+    source_v = screen_v / (perspective_scale + 2.0 * a * screen_v)
+    denominator = 1.0 - 2.0 * a * source_v
+    source_u = (screen_u * denominator
+                - a * (1.0 - source_v)) / perspective_scale
+    return source_u * VIEW_W, source_v * VIEW_H
+
+
 def depth_scale_at(y: float, a: float) -> float:
     if a <= 0.0:
         return 1.0
@@ -45,37 +61,53 @@ def depth_scale_at(y: float, a: float) -> float:
 
 
 def depth_extent_at(a: float) -> float:
-    return 1.0 / (1.0 - a)
+    return (1.0 - a) ** 2 / (1.0 - 2.0 * a)
+
+
+def source_center_at(a: float) -> tuple[float, float]:
+    return VIEW_W * 0.5, VIEW_H / (2.0 * (1.0 - a))
 
 
 def world_to_unrotated_source(wx: float, wy: float, cam_x: float,
                               cam_y: float, zoom: float,
                               a: float) -> tuple[float, float]:
-    x = (wx - cam_x) * zoom
+    base_x = (wx - cam_x) * zoom
     base_y = (wy - cam_y) * zoom
-    extent = depth_extent_at(a)
-    y = VIEW_H - (VIEW_H - base_y) / extent
+    center_x, center_y = source_center_at(a)
+    x = center_x + (base_x - VIEW_W * 0.5) / (1.0 - a)
+    y = center_y + (base_y - VIEW_H * 0.5) / depth_extent_at(a)
     return x, y
 
 
-def rotate_source(x: float, y: float,
-                  rotation_deg: float) -> tuple[float, float]:
+def camera_focus_world(cam_x: float, cam_y: float, zoom: float,
+                       a: float) -> tuple[float, float]:
+    return (
+        cam_x + VIEW_W * 0.5 / zoom,
+        cam_y + VIEW_H * 0.5 / zoom,
+    )
+
+
+def rotate_world(wx: float, wy: float, focus_x: float, focus_y: float,
+                 rotation_deg: float) -> tuple[float, float]:
     angle = math.radians(rotation_deg)
     cos_angle = math.cos(angle)
     sin_angle = math.sin(angle)
-    dx = x - VIEW_W * 0.5
-    dy = y - VIEW_H * 0.5
+    dx = wx - focus_x
+    dy = wy - focus_y
     return (
-        VIEW_W * 0.5 + cos_angle * dx - sin_angle * dy,
-        VIEW_H * 0.5 + sin_angle * dx + cos_angle * dy,
+        focus_x + cos_angle * dx - sin_angle * dy,
+        focus_y + sin_angle * dx + cos_angle * dy,
     )
 
 
 def world_to_source(wx: float, wy: float, cam_x: float, cam_y: float,
                     zoom: float, a: float,
                     rotation_deg: float) -> tuple[float, float]:
-    x, y = world_to_unrotated_source(wx, wy, cam_x, cam_y, zoom, a)
-    return rotate_source(x, y, rotation_deg)
+    focus_x, focus_y = camera_focus_world(cam_x, cam_y, zoom, a)
+    rotated_x, rotated_y = rotate_world(
+        wx, wy, focus_x, focus_y, rotation_deg)
+    return world_to_unrotated_source(
+        rotated_x, rotated_y, cam_x, cam_y, zoom, a)
 
 
 def source_trapezoid_halfplanes(a: float):
@@ -287,10 +319,8 @@ def render_perspective(context: dcg.Context, parent: dcg.DrawingList,
             *position, cam_x, cam_y, zoom, a, rotation_deg)
         if not inside_halfplanes(source, halfplanes):
             continue
-        unrotated_y = world_to_unrotated_source(
-            *position, cam_x, cam_y, zoom, a)[1]
         screen = project_xy(*source, a)
-        scale = depth_scale_at(unrotated_y, a) * zoom / depth_extent_at(a)
+        scale = depth_scale_at(source[1], a) * zoom / depth_extent_at(a)
         dcg.DrawText(context, parent=parent, pos=screen, text=text,
                      size=-max(8.0, abs(size) * scale), color=color)
 
@@ -349,9 +379,10 @@ class PerspectiveRotationController:
         self.py = max(AVATAR_RADIUS, min(WORLD_H - AVATAR_RADIUS,
                                         self.py + dy))
         a = self._a_from_angle()
-        screen_x, screen_y = world_to_source(
+        source_x, source_y = world_to_source(
             self.px, self.py, self.cam_x, self.cam_y, self.zoom, a,
             self.rotation_deg)
+        screen_x, screen_y = project_xy(source_x, source_y, a)
         correction_x = 0.0
         correction_y = 0.0
         if screen_x < EDGE_BAND:
@@ -363,13 +394,19 @@ class PerspectiveRotationController:
         elif screen_y > VIEW_H - EDGE_BAND:
             correction_y = VIEW_H - EDGE_BAND - screen_y
 
+        target_source_x, target_source_y = unproject_xy(
+            screen_x + correction_x, screen_y + correction_y, a)
+        source_correction_x = target_source_x - source_x
+        source_correction_y = target_source_y - source_y
         angle = math.radians(self.rotation_deg)
-        base_correction_x = (math.cos(angle) * correction_x
-                             + math.sin(angle) * correction_y)
-        base_correction_y = (-math.sin(angle) * correction_x
-                             + math.cos(angle) * correction_y)
-        self.cam_x -= base_correction_x / self.zoom
-        self.cam_y -= (base_correction_y * depth_extent_at(a) / self.zoom)
+        base_correction_x = source_correction_x * (1.0 - a)
+        base_correction_y = source_correction_y * depth_extent_at(a)
+        world_correction_x = (math.cos(angle) * base_correction_x
+                              + math.sin(angle) * base_correction_y)
+        world_correction_y = (-math.sin(angle) * base_correction_x
+                              + math.cos(angle) * base_correction_y)
+        self.cam_x -= world_correction_x / self.zoom
+        self.cam_y -= world_correction_y / self.zoom
         self.cam_x = self._clamp_cam_x(self.cam_x)
         self.cam_y = self._clamp_cam_y(self.cam_y)
         self.repaint()
