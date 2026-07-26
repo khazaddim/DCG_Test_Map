@@ -216,3 +216,10 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Generated ebook artifacts
+*.epub
+Controller_change_epub/
+
+# ignore test epub
+tmp_epub_test/
