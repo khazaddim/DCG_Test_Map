@@ -1,6 +1,6 @@
 ---
 name: dcg-perspective-map-patterns
-description: 'DearCyGui (dcg) projective 2D map rendering patterns. Use when building perspective-tilted maps, pseudo-3D top-down/world canvases, vanishing-point grid views, runtime inclination/zoom sliders, homography transforms, full-screen perspective fill without dark wedges, source-trapezoid clipping, polygon/line clipping, DrawPolygon triangulation safety, or edge-band cameras combined with non-affine projection. Builds on dcg-animation-patterns Pattern 6.'
+description: 'DearCyGui (dcg) projective 2D game-map rendering patterns. Use when building perspective-tilted or rotating maps, camera yaw, centered inclination, runtime rotation/inclination/zoom sliders, homography transforms, inverse projection, full-screen fill without dark wedges, source-trapezoid clipping, polygon safety, edge-band cameras, scene-graph double buffering, or diagnosing black flicker during draw-list rebuilds. Builds on dcg-animation-patterns Pattern 6.'
 ---
 
 # DearCyGui Perspective Map Patterns
@@ -17,9 +17,31 @@ homography and clipping machinery in the perspective examples.
 
 | File | Role | Notes |
 |---|---|---|
-| [07_pan_camera_perspective_tilt.py](../../../Animation/07_pan_camera_perspective_tilt.py) | First perspective map with tilt + zoom | Maps viewport rect to an output trapezoid. Good for learning the pipeline, but it naturally leaves dark corner wedges outside the trapezoid. |
-| [08_Camera_tilt_simple.py](../../../Animation/08_Camera_tilt_simple.py) | Simpler tilt branch | Same core rect-to-trapezoid homography idea without the later fullscreen-fill refinement. |
-| [09_pan_camera_perspective_fullscreen.py](../../../Animation/09_pan_camera_perspective_fullscreen.py) | Canonical fullscreen perspective map | Clips to the source trapezoid (preimage of the viewport) and extends ground so the entire viewport fills with map content. Prefer this for new work. |
+| [07_pan_camera_perspective_tilt.py](../../../examples/07_pan_camera_perspective_tilt.py) | First perspective map with tilt + zoom | Maps viewport rect to an output trapezoid. Good for learning the pipeline, but it naturally leaves dark corner wedges outside the trapezoid. |
+| [08_Camera_tilt_simple.py](../../../examples/08_Camera_tilt_simple.py) | Simpler tilt branch | Same core rect-to-trapezoid homography idea without the later fullscreen-fill refinement. |
+| [09_pan_camera_perspective_fullscreen.py](../../../examples/09_pan_camera_perspective_fullscreen.py) | Fullscreen perspective map | Clips to the source trapezoid and extends ground so the entire viewport fills with map content. |
+| [10_pan_camera_perspective_rotation.py](../../../examples/10_pan_camera_perspective_rotation.py) | Canonical game-map version | Adds centered world rotation, locally normalized inclination, inverse-projected edge tracking, and atomic front/back drawing buffers. Prefer this when pieces move on a rotating map. |
+
+## Beginner Foundations
+
+A coordinate is only meaningful together with its coordinate space. These
+examples use three spaces:
+
+1. **World space** stores durable game state. A piece at `(1100, 750)` stays at
+  that world position regardless of camera settings.
+2. **Source space** is the input plane for the perspective formula. It resembles
+  viewport pixels, but may extend outside the viewport rectangle.
+3. **Screen space** contains the final pixels inside `DrawInWindow`.
+
+A transform converts coordinates from one space to the next. A transform does
+not move the actual game object; it computes where that object should be drawn.
+Keep simulation and collision logic in world space. Project only for rendering
+and screen-space interaction.
+
+Transform order matters because transforms generally do not commute. Rotating
+an already depth-compressed map rotates its compressed axis and causes shearing.
+For a stable game map, rotate in world space before camera/depth/perspective
+work. Terrain and every moving piece must use the same complete pipeline.
 
 ## Core Mental Model
 
@@ -27,10 +49,23 @@ DCG draw trees support affine transforms (`DrawingScale`), not projective
 homographies. For perspective maps, store the world as plain Python data and
 rebuild projected draw items when state changes.
 
-Pipeline:
+Basic fullscreen pipeline (`09`):
 
 ```text
 world_xy -- camera pan / zoom --> source_xy -- homography --> viewport_xy
+```
+
+Centered rotating game-map pipeline (`10`):
+
+```text
+world_xy
+  -- rotate around camera focus
+  -- camera pan / zoom
+  -- center and scale normalization
+  --> source_xy
+  -- source clipping
+  -- homography
+  --> screen_xy
 ```
 
 Then create `dcg.DrawLine`, `dcg.DrawPolygon`, and `dcg.DrawText` in a
@@ -60,6 +95,43 @@ sy = VIEW_H * ((1.0 - 2.0 * a) * v) / denom
 This preserves straight lines, so grid lines remain straight and converge.
 Circles do not remain circles; approximate them with `DrawPolygon` using a
 small regular polygon (the examples use `CIRCLE_SEGMENTS = 24`).
+
+The inverse homography is also useful. Edge-band tracking in a perspective view
+should inspect a piece after projection in actual screen pixels, move the desired
+screen position to the band boundary, then unproject that target back into
+source space. Do not compare source coordinates directly with screen-space HUD
+boundaries once perspective is active.
+
+## Shared Central Anchor (`10`)
+
+The center of the source rectangle is not the source point that the homography
+maps to screen center. For the homography above, the true source preimage of
+screen center is:
+
+```python
+center_source_x = VIEW_W * 0.5
+center_source_y = VIEW_H / (2.0 * (1.0 - a))
+```
+
+Use one camera focus for both world rotation and inclination. Normalize source
+offsets by the homography's local center scale:
+
+```python
+horizontal_center_scale = 1.0 - a
+vertical_center_scale = (1.0 - a) ** 2 / (1.0 - 2.0 * a)
+
+source_x = center_source_x + (base_x - VIEW_W * 0.5) / horizontal_center_scale
+source_y = center_source_y + (base_y - VIEW_H * 0.5) / vertical_center_scale
+```
+
+This construction gives two important invariants:
+
+- Changing inclination or rotation does not move the camera focus away from
+  screen center.
+- At the focus, horizontal and vertical scale both equal the selected zoom.
+
+Perspective still compresses geometry toward the horizon. That changing scale
+with distance is intentional. Rotation-dependent scale or focus drift is not.
 
 ## Rect-To-Trapezoid vs Fullscreen Fill
 
@@ -123,44 +195,71 @@ class WorldModel:
         self.texts = []
 ```
 
-`render_perspective(...)` clears the projected drawing layer, clips/projects the
-model, and creates the current frame's `Draw*` items. This is intentionally a
-rebuild-on-input-change model, not a per-frame animation loop.
+`render_perspective(...)` clips/projects the model and creates the current
+frame's `Draw*` items. This is intentionally a rebuild-on-input-change model,
+not a per-frame animation loop.
 
 Use a plain `dcg.DrawingList` under `DrawInWindow` as the projected layer:
 
 ```python
 with dcg.DrawInWindow(context, width=VIEW_W, height=VIEW_H) as canvas:
-    persp_layer = dcg.DrawingList(context, parent=canvas)
+  layer_container = dcg.DrawingList(context, parent=canvas)
 ```
+
+Do not clear and rebuild the currently visible list. Use the double-buffering
+pattern below.
 
 ## Camera + Zoom With Edge Band
 
-Keep the edge-band controller from `dcg-animation-patterns`, but run the band
-test in viewport-pixel space after zoom:
+For affine examples, keep the edge-band controller from
+`dcg-animation-patterns` and run the band test after zoom. For a perspective
+map, first project the piece into actual screen pixels:
 
 ```python
-screen_x = (avatar_x - cam_x) * zoom
-screen_y = (avatar_y - cam_y) * zoom
+source_x, source_y = world_to_source(...)
+screen_x, screen_y = project_xy(source_x, source_y, a)
 ```
 
-When panning the camera in response to edge-band pressure, convert back to
-world units:
+Move that screen point to the desired band boundary, call `unproject_xy` on the
+target, then invert center scaling, rotation, and zoom to obtain the camera
+correction. Demo `10` contains the complete implementation.
+
+## Atomic Drawing-List Double Buffering
+
+DearCyGui can render on a separate thread. Clearing a visible `DrawingList` and
+then adding replacement children one by one exposes intermediate scene states.
+The rendering thread may observe an empty list, producing a random black frame,
+or a partially rebuilt list. More expensive transforms make the timing window
+larger, so flicker may appear only after rotation is added and may arrive in
+bursts. This is a synchronization issue, not floating-point precision.
+
+Keep two child drawing lists under one stable parent:
 
 ```python
-cam_x += delta_pixels / zoom
-cam_y += delta_pixels / zoom
+displayed_layer = dcg.DrawingList(context, parent=layer_container)
+back_layer = dcg.DrawingList(context, parent=layer_container, show=False)
 ```
 
-Camera clamp also depends on zoom:
+Rebuild only the hidden back layer. When complete, exchange visibility while
+holding their common parent's mutex, then exchange Python references:
 
 ```python
-max_cam_x = max(0.0, WORLD_W - VIEW_W / zoom)
-max_cam_y = max(0.0, WORLD_H - VIEW_H / zoom)
+render_perspective(context, back_layer, ...)
+
+with layer_container.mutex:
+  displayed_layer.show = False
+  back_layer.show = True
+  displayed_layer, back_layer = back_layer, displayed_layer
 ```
 
-When the zoom slider changes, recenter the camera around the avatar before
-clamping. That keeps the avatar visually anchored and avoids surprising jumps.
+The old complete frame remains visible while the new frame is built. The mutex
+makes the two visibility writes one atomic scene-graph transition from the
+renderer point of view. This is scene-graph double buffering; it is analogous
+to front/back image buffers but stores draw items rather than pixels.
+
+Holding the visible layer mutex for the entire rebuild also prevents partial
+frames, but it stalls rendering while all geometry is constructed. Hidden back
+buffer construction plus a short swap lock gives smoother interaction.
 
 ## Runtime Sliders
 
@@ -203,6 +302,14 @@ the whole canvas while still showing where the real world bounds are.
   cannot make parallel lines converge.
 - Rebuilding every render frame when the geometry only changes on input. Repaint
   on slider/key changes instead.
+- Clearing and rebuilding a live visible `DrawingList`. Build a hidden back
+  layer and atomically swap complete buffers to prevent black flicker.
+- Applying rotation after depth compression. Rotate world coordinates around
+  the camera focus before inclination/perspective transforms.
+- Anchoring inclination at a near edge while rotation uses viewport center. Use
+  one central camera focus and normalize the homography scale there.
+- Testing perspective edge bands in source coordinates. Test the projected
+  screen position and unproject the desired correction.
 - Clipping after projection unless you have a specific reason. Clip source-space
   geometry first.
 - Per-vertex clamping polygon points to the viewport rectangle. Use proper
@@ -211,3 +318,17 @@ the whole canvas while still showing where the real world bounds are.
   Approximate with `DrawPolygon`.
 - Letting the homography parameter reach `0.5`. The denominator can collapse at
   the bottom edge. Keep `MAX_A` below 0.5.
+
+## Cheap Validation Invariants
+
+Before relying only on visual inspection, numerically verify:
+
+- `unproject_xy(*project_xy(point, a), a)` returns the original source point.
+- The camera focus projects to `(VIEW_W / 2, VIEW_H / 2)` for several
+  inclinations and rotations.
+- Small world-X and world-Y offsets at the focus have equal screen scale and
+  match the selected zoom.
+- After each repaint exactly one drawing buffer is visible and it contains a
+  complete set of children.
+- A rapid multi-frame inclination/rotation stress run produces no exceptions or
+  incomplete visible buffers.

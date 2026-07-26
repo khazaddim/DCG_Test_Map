@@ -20,6 +20,11 @@ container choices for the map prototype.
   - Keeps the example vector-only so it has no extra asset dependencies
   - Can be adapted later to swap `DrawingList` frames for SVG- or bitmap-based frames
 
+- `10_pan_camera_perspective_rotation.py`
+  - Adds map rotation around the viewport center to the full-screen perspective map
+  - Combines rotation, inclination-dependent view depth, zoom, and edge-band panning
+  - Uses a rotation slider spanning -180 to 180 degrees
+
 ## Suggested comparison
 
 If the game map wants built-in panning and zooming, start with `02_draw_in_plot_zoom_levels.py`.

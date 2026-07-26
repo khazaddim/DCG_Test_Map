@@ -5,7 +5,7 @@ This repository includes local skills for GitHub Copilot coding agents.
 ## Available Skills
 
 - `dcg-animation-patterns`: DearCyGui 2D animation, coordinate systems, camera control, DrawStream, and edge-band panning patterns.
-- `dcg-perspective-map-patterns`: Perspective map rendering, homography transforms, clipped polygons/lines, and fullscreen tilted map patterns.
+- `dcg-perspective-map-patterns`: Perspective and rotating game maps, centered homography transforms, inverse projection, clipping, camera tracking, and atomic front/back drawing buffers that prevent rebuild flicker.
 - `openspec-epub-workflow`: Generate review-ready markdown book folders and build EPUB files from OpenSpec changes, project files, or diffs using `mark2epub.py`.
 
 ## Skill Paths

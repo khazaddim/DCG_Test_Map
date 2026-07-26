@@ -1,11 +1,93 @@
-"""Full-screen perspective map with inclination, zoom, and rotation.
+"""Lesson: a stable rotating perspective game map in DearCyGui.
 
-This extends demo 09 with a world-space rotation around the camera focus.
-Inclination and rotation share that central anchor, and the source transform
-normalizes the homography scale at the focus. World points are rotated first,
-then mapped through the inclination-dependent depth extent, clipped, and
-projected. This keeps the map and its pieces stable around the play area while
-retaining perspective compression toward the horizon.
+Start with the basic problem
+============================
+The map is stored in world coordinates. A tree, road, or game piece has a
+position in that world which should not depend on the window size or camera.
+The monitor, however, draws pixels. We therefore need a sequence of coordinate
+conversions called a transform pipeline.
+
+This demo uses three coordinate spaces:
+
+1. World space: stable map and game-piece positions, measured in world units.
+2. Source space: camera-relative coordinates used as input to the perspective
+    formula, measured in viewport-like pixels.
+3. Screen space: final pixels drawn inside the DearCyGui canvas.
+
+The complete pipeline is:
+
+     world point
+        -> rotate around the camera focus
+        -> apply camera position and zoom
+        -> normalize inclination around the same central focus
+        -> clip to the visible source region
+        -> apply the projective homography
+        -> screen pixel
+
+Why transform order matters
+===========================
+Transforms generally do not commute: doing A then B can produce a different
+result from doing B then A. An early version compressed depth first and then
+rotated that already-compressed map. As the map turned, its stretched axis
+turned with it and produced visible shearing. Here rotation happens in world
+space first. Perspective remains aligned with the camera, like camera yaw over
+a ground plane, and terrain and pieces pass through the exact same pipeline.
+
+Why inclination and rotation need one center
+============================================
+The perspective homography does not map source-space center directly to screen
+center, and its local horizontal and vertical scales are different. If rotation
+uses one center while inclination is anchored to a near edge, the map appears
+to slide, stretch, or hinge from the bottom of the screen.
+
+`source_center_at` finds the source point that the homography maps to screen
+center. `depth_extent_at` and the horizontal `(1 - a)` factor compensate for
+the homography's local scale there. `camera_focus_world` is rotated onto that
+same point. These choices establish two useful invariants:
+
+* The camera focus stays at screen center as inclination or rotation changes.
+* Horizontal and vertical scale at the focus both equal the selected zoom.
+
+Perspective still compresses distant geometry toward the horizon. That is the
+intentional perspective effect, not rotation-dependent distortion.
+
+Projection, inverse projection, and clipping
+============================================
+`project_xy` maps source space to screen space. `unproject_xy` performs the
+inverse conversion and is used by edge-band camera tracking: detect the avatar
+in actual screen pixels, move the target to the band boundary, unproject that
+target, and convert the correction back through scale and rotation.
+
+The full-screen homography needs a trapezoid-shaped source region. Lines and
+polygons are clipped to that convex region before projection. Clipping first
+prevents invalid or degenerate polygons and ensures the projected map fills the
+canvas without dark corner wedges.
+
+Why the renderer uses two drawing buffers
+==========================================
+Perspective is not an affine DearCyGui `DrawingScale`, so projected draw items
+must be rebuilt whenever camera state changes. Clearing the visible
+`DrawingList` and recreating its children is not one atomic operation. DearCyGui
+has a separate rendering thread, which can occasionally draw after the clear
+but before reconstruction finishes. The result is a random black frame; more
+expensive rotation math only makes that timing window easier to observe.
+
+The controller therefore owns two child `DrawingList` objects:
+
+* `displayed_layer` remains visible and always contains one complete frame.
+* `back_layer` stays hidden while the next complete frame is constructed.
+
+After construction, their `show` flags are exchanged while holding the common
+parent's mutex. The rendering thread sees either the old complete frame or the
+new complete frame, never an empty or partly rebuilt map. This is double
+buffering at the scene-graph level.
+
+When extending this demo
+========================
+Put every world object, including moving pieces, through `world_to_source` and
+`project_xy`. Keep HUD elements parented directly to the canvas. Clip geometry
+before projection, keep the perspective parameter below `0.5`, and rebuild the
+hidden back buffer before performing the mutex-protected swap.
 """
 
 import math
@@ -343,6 +425,8 @@ class PerspectiveRotationController:
                  model: WorldModel, status: dcg.Text) -> None:
         self.context = context
         self.layer = layer
+        self.displayed_layer = dcg.DrawingList(context, parent=layer)
+        self.back_layer = dcg.DrawingList(context, parent=layer, show=False)
         self.model = model
         self.status = status
         self.zoom = 1.0
@@ -425,8 +509,13 @@ class PerspectiveRotationController:
     def repaint(self) -> None:
         a = self._a_from_angle()
         render_perspective(
-            self.context, self.layer, self.model, self.cam_x, self.cam_y,
+            self.context, self.back_layer, self.model, self.cam_x, self.cam_y,
             self.zoom, a, self.rotation_deg, self.px, self.py)
+        with self.layer.mutex:
+            self.displayed_layer.show = False
+            self.back_layer.show = True
+            self.displayed_layer, self.back_layer = (
+                self.back_layer, self.displayed_layer)
         self.status.value = (
             f"avatar=({self.px:.0f},{self.py:.0f})  "
             f"camera=({self.cam_x:.0f},{self.cam_y:.0f})  "
