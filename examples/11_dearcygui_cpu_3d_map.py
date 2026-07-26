@@ -16,6 +16,11 @@ and a painter's algorithm rather than a depth buffer. That is sufficient for
 separated convex objects, but intersecting meshes would need face splitting or
 a renderer with a real per-pixel depth buffer.
 
+Ground labels use real `(x, y, z)` anchor points and perspective-scaled sizes,
+but the text itself remains screen-upright so coordinates and names stay easy
+to read while the map rotates and tilts. They are drawn before solid faces, so
+towers naturally cover labels behind their footprints.
+
 The front/back DrawingList swap from demo 10 remains important. Camera changes
 rebuild many projected faces, so the hidden back layer is completed before one
 mutex-protected visibility swap prevents partially rendered frames.
@@ -79,9 +84,18 @@ class Face:
     color: Color
 
 
+@dataclass(frozen=True)
+class GroundLabel:
+    position: Vec3
+    text: str
+    size: float
+    color: Color
+
+
 @dataclass
 class World3D:
     boxes: list[Box]
+    labels: list[GroundLabel]
 
 
 def dot(a: Vec3, b: Vec3) -> float:
@@ -112,8 +126,8 @@ def camera_eye(camera: Camera) -> Vec3:
     pitch = math.radians(camera.pitch_deg)
     horizontal = camera.distance * math.sin(pitch)
     return (
-        camera.target_x - math.sin(yaw) * horizontal,
-        camera.target_y - math.cos(yaw) * horizontal,
+        camera.target_x + math.sin(yaw) * horizontal,
+        camera.target_y + math.cos(yaw) * horizontal,
         camera.distance * math.cos(pitch),
     )
 
@@ -134,7 +148,7 @@ def world_to_camera(point: Vec3, camera: Camera) -> Vec3:
     cos_pitch = math.cos(pitch)
     sin_pitch = math.sin(pitch)
     screen_down = cos_pitch * rotated_y - sin_pitch * dz
-    forward_depth = (camera.distance + sin_pitch * rotated_y
+    forward_depth = (camera.distance - sin_pitch * rotated_y
                      - cos_pitch * dz)
     return rotated_x, screen_down, forward_depth
 
@@ -361,8 +375,21 @@ def project_world_line(p0: Vec3, p1: Vec3,
     return clip_line_screen(screen_0, screen_1)
 
 
+def project_ground_label(label: GroundLabel,
+                         camera: Camera) -> tuple[Vec2, float] | None:
+    camera_point = world_to_camera(label.position, camera)
+    if camera_point[2] < NEAR_PLANE:
+        return None
+    screen = project_camera(camera_point, camera)
+    if not (0.0 <= screen[0] <= VIEW_W and 0.0 <= screen[1] <= VIEW_H):
+        return None
+    apparent_scale = camera.focal_length / camera_point[2]
+    screen_size = max(8.0, min(18.0, label.size * apparent_scale))
+    return screen, screen_size
+
+
 def build_world() -> World3D:
-    return World3D(boxes=[
+    boxes = [
         Box(440.0, 400.0, 210.0, 180.0, 320.0,
             (175, 105, 72), "watch tower"),
         Box(820.0, 980.0, 260.0, 220.0, 180.0,
@@ -371,7 +398,24 @@ def build_world() -> World3D:
             (154, 126, 72), "high tower"),
         Box(1760.0, 1080.0, 340.0, 240.0, 140.0,
             (113, 145, 91), "hall"),
-    ])
+    ]
+    labels = [
+        GroundLabel(
+            (float(grid_x + 5), float(grid_y + 4), 6.0),
+            f"{grid_x},{grid_y}", 13.0, (132, 164, 137),
+        )
+        for grid_x in range(0, int(WORLD_W) + 1, 200)
+        for grid_y in range(0, int(WORLD_H) + 1, 200)
+    ]
+    labels.extend(
+        GroundLabel(
+            (box.center_x - box.width * 0.5,
+             box.center_y + box.depth * 0.5 + 28.0, 6.0),
+            box.name, 16.0, (218, 207, 151),
+        )
+        for box in boxes
+    )
+    return World3D(boxes=boxes, labels=labels)
 
 
 def clear_layer(parent: dcg.DrawingList) -> None:
@@ -435,6 +479,14 @@ def render_scene(context: dcg.Context, parent: dcg.DrawingList,
         if line is not None:
             dcg.DrawLine(context, parent=parent, p1=line[0], p2=line[1],
                          color=border_color, thickness=-3)
+
+    for label in world.labels:
+        projected_label = project_ground_label(label, camera)
+        if projected_label is None:
+            continue
+        screen, screen_size = projected_label
+        dcg.DrawText(context, parent=parent, pos=screen, text=label.text,
+                     size=-screen_size, color=label.color)
 
     piece = Box(piece_x, piece_y, PIECE_SIZE, PIECE_SIZE, 115.0,
                 (245, 194, 67), "player")
