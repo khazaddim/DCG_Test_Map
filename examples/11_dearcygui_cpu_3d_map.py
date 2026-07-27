@@ -21,6 +21,13 @@ but the text itself remains screen-upright so coordinates and names stay easy
 to read while the map rotates and tilts. They are drawn before solid faces, so
 towers naturally cover labels behind their footprints.
 
+The follow camera projects the player's ground contact into screen space. When
+it leaves the central edge band, `ground_world_from_screen` casts the desired
+band-boundary pixel back onto the `z=0` plane. Moving the camera target by that
+exact world-space difference keeps tracking correct through yaw, pitch, and
+zoom. The vertical band is slightly wider because pixels above the horizon do
+not have a forward intersection with the ground plane at low camera angles.
+
 The front/back DrawingList swap from demo 10 remains important. Camera changes
 rebuild many projected faces, so the hidden back layer is completed before one
 mutex-protected visibility swap prevents partially rendered frames.
@@ -38,6 +45,8 @@ WORLD_W = 2200.0
 WORLD_H = 1500.0
 MOVE_STEP = 35.0
 PIECE_SIZE = 70.0
+EDGE_BAND_X = 150.0
+EDGE_BAND_Y = 200.0
 FOV_Y_DEG = 58.0
 NEAR_PLANE = 25.0
 ZOOM_MIN = 0.35
@@ -159,6 +168,31 @@ def project_camera(point: Vec3, camera: Camera) -> Vec2:
         VIEW_W * 0.5 + point[0] * scale,
         VIEW_H * 0.5 + point[1] * scale,
     )
+
+
+def ground_world_from_screen(screen: Vec2, camera: Camera) -> Vec2 | None:
+    """Intersect a screen ray with z=0 and return its world position."""
+    normalized_x = (screen[0] - VIEW_W * 0.5) / camera.focal_length
+    normalized_y = (screen[1] - VIEW_H * 0.5) / camera.focal_length
+    pitch = math.radians(camera.pitch_deg)
+    cos_pitch = math.cos(pitch)
+    sin_pitch = math.sin(pitch)
+    denominator = cos_pitch + normalized_y * sin_pitch
+    if denominator <= 1e-8:
+        return None
+
+    rotated_y = normalized_y * camera.distance / denominator
+    depth = camera.distance - sin_pitch * rotated_y
+    if depth < NEAR_PLANE:
+        return None
+    rotated_x = normalized_x * depth
+
+    yaw = math.radians(camera.yaw_deg)
+    cos_yaw = math.cos(yaw)
+    sin_yaw = math.sin(yaw)
+    offset_x = cos_yaw * rotated_x + sin_yaw * rotated_y
+    offset_y = -sin_yaw * rotated_x + cos_yaw * rotated_y
+    return camera.target_x + offset_x, camera.target_y + offset_y
 
 
 def clip_polygon_near(points: list[Vec3]) -> list[Vec3]:
@@ -554,7 +588,31 @@ class Cpu3DController:
         self.piece_y = max(PIECE_SIZE * 0.5,
                            min(WORLD_H - PIECE_SIZE * 0.5,
                                self.piece_y + dy))
+        self._pan_for_piece()
         self.repaint()
+
+    def _pan_for_piece(self) -> None:
+        camera = self.camera()
+        camera_point = world_to_camera(
+            (self.piece_x, self.piece_y, 0.0), camera)
+        if camera_point[2] < NEAR_PLANE:
+            return
+        screen_x, screen_y = project_camera(camera_point, camera)
+        target_screen = (
+            max(EDGE_BAND_X, min(VIEW_W - EDGE_BAND_X, screen_x)),
+            max(EDGE_BAND_Y, min(VIEW_H - EDGE_BAND_Y, screen_y)),
+        )
+        if target_screen == (screen_x, screen_y):
+            return
+        target_ground = ground_world_from_screen(target_screen, camera)
+        if target_ground is None:
+            return
+        offset_x = target_ground[0] - camera.target_x
+        offset_y = target_ground[1] - camera.target_y
+        self.target_x = max(
+            0.0, min(WORLD_W, self.piece_x - offset_x))
+        self.target_y = max(
+            0.0, min(WORLD_H, self.piece_y - offset_y))
 
     def camera(self) -> Camera:
         return Camera(
@@ -574,6 +632,7 @@ class Cpu3DController:
                 self.back_layer, self.displayed_layer)
         self.status.value = (
             f"piece=({self.piece_x:.0f},{self.piece_y:.0f},0)  "
+            f"target=({self.target_x:.0f},{self.target_y:.0f})  "
             f"pitch={self.pitch_deg:.1f} deg  yaw={self.yaw_deg:.1f} deg  "
             f"zoom={self.zoom:.2f}x  camera distance={camera.distance:.0f}"
         )
@@ -584,7 +643,8 @@ def build_ui(context: dcg.Context) -> None:
     with dcg.Window(context, label="DearCyGui CPU 3D map",
                     width=VIEW_W + 40, height=VIEW_H + 300) as window:
         dcg.Text(context,
-                 value="Arrow keys move the gold 3D piece.",
+                 value="Arrow keys move the gold 3D piece; the camera follows "
+                     "when it enters an edge band.",
                  wrap=VIEW_W)
         status = dcg.Text(context, value="")
         with dcg.DrawInWindow(context, width=VIEW_W, height=VIEW_H) as canvas:
@@ -592,6 +652,26 @@ def build_ui(context: dcg.Context) -> None:
                          pmax=(VIEW_W, VIEW_H), fill=(19, 24, 31),
                          color=0, thickness=-1)
             scene_layer = dcg.DrawingList(context, parent=canvas)
+            band_color = (245, 205, 83, 35)
+            dcg.DrawRect(context, parent=canvas, pmin=(0, 0),
+                     pmax=(VIEW_W, EDGE_BAND_Y), fill=band_color,
+                         color=0, thickness=-1)
+            dcg.DrawRect(context, parent=canvas,
+                     pmin=(0, VIEW_H - EDGE_BAND_Y),
+                         pmax=(VIEW_W, VIEW_H), fill=band_color,
+                         color=0, thickness=-1)
+            dcg.DrawRect(context, parent=canvas, pmin=(0, EDGE_BAND_Y),
+                     pmax=(EDGE_BAND_X, VIEW_H - EDGE_BAND_Y),
+                         fill=band_color, color=0, thickness=-1)
+            dcg.DrawRect(context, parent=canvas,
+                     pmin=(VIEW_W - EDGE_BAND_X, EDGE_BAND_Y),
+                     pmax=(VIEW_W, VIEW_H - EDGE_BAND_Y),
+                         fill=band_color, color=0, thickness=-1)
+            dcg.DrawRect(context, parent=canvas,
+                     pmin=(EDGE_BAND_X, EDGE_BAND_Y),
+                     pmax=(VIEW_W - EDGE_BAND_X,
+                         VIEW_H - EDGE_BAND_Y),
+                         color=(245, 205, 83, 115), thickness=-1)
             dcg.DrawRect(context, parent=canvas, pmin=(0, 0),
                          pmax=(VIEW_W, VIEW_H), color=(112, 132, 155),
                          thickness=-2)
