@@ -1,0 +1,110 @@
+from .math3d import (
+	DEFAULT_LIGHT_DIRECTION,
+	Camera3D,
+	Color,
+	ProjectedLine,
+	ProjectedPolygon,
+	ProjectedQuad,
+	ProjectionPipeline,
+	Vec2,
+	Vec3,
+	Viewport,
+	clip_line_near,
+	clip_line_to_viewport,
+	clip_polygon_near,
+	clip_polygon_to_viewport,
+	clean_polygon,
+	cross,
+	dot,
+	face_center,
+	is_face_visible,
+	normalized,
+	shade_directional,
+	subtract,
+)
+from .objects import Box3D, GroundPlane3D, Line3D, Polygon3D, Polyline3D, Text3D
+from .collision import AabbFootprint, Collider, CollisionShape2D, CollisionWorld
+from .scene import (
+	AverageDepthSorter,
+	AnimatedImageMaterial,
+	FrameContext,
+	ImageMaterial,
+	Material3D,
+	ObjectHandle,
+	OverlapDepthSorter,
+	ProjectedRenderEntry,
+	Renderable3D,
+	RenderSorter,
+	RenderStats,
+	Scene3D,
+	SolidMaterial,
+	SortResult,
+	WorldRenderPacket,
+)
+
+__all__ = [
+	"Camera3D",
+	"AabbFootprint",
+	"AnimatedImageMaterial",
+	"Box3D",
+	"Collider",
+	"CollisionShape2D",
+	"CollisionWorld",
+	"Color",
+	"DEFAULT_LIGHT_DIRECTION",
+	"FrameContext",
+	"GroundPlane3D",
+	"ImageMaterial",
+	"Line3D",
+	"Material3D",
+	"ObjectHandle",
+	"OverlapDepthSorter",
+	"Polygon3D",
+	"Polyline3D",
+	"ProjectedLine",
+	"ProjectedPolygon",
+	"ProjectedQuad",
+	"ProjectedRenderEntry",
+	"ProjectionPipeline",
+	"Renderable3D",
+	"RenderSorter",
+	"RenderStats",
+	"Scene3D",
+	"SolidMaterial",
+	"SortResult",
+	"Text3D",
+	"Vec2",
+	"Vec3",
+	"Viewport",
+	"WorldRenderPacket",
+	"AverageDepthSorter",
+	"clip_line_near",
+	"clip_line_to_viewport",
+	"clip_polygon_near",
+	"clip_polygon_to_viewport",
+	"clean_polygon",
+	"cross",
+	"dot",
+	"face_center",
+	"is_face_visible",
+	"normalized",
+	"shade_directional",
+	"subtract",
+]
+
+try:
+	from .controllers import EdgeBandFollowController
+	from .renderer import CpuRenderer3D
+	from .widget import DrawInWindow3D, FramePublisher, PolygonStyle
+except ModuleNotFoundError as exc:
+	missing_name = exc.name or ""
+	if missing_name != "dearcygui" and "dearcygui" not in str(exc):
+		raise
+else:
+	__all__.extend([
+		"CpuRenderer3D",
+		"DrawInWindow3D",
+		"EdgeBandFollowController",
+		"FramePublisher",
+		"PolygonStyle",
+	])
