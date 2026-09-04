@@ -27,6 +27,8 @@ from .collision import AabbFootprint, Collider, CollisionShape2D, CollisionWorld
 from .scene import (
 	AverageDepthSorter,
 	AnimatedImageMaterial,
+	AnimationProjection,
+	BillboardFacing,
 	FrameContext,
 	ImageMaterial,
 	Material3D,
@@ -39,20 +41,26 @@ from .scene import (
 	Scene3D,
 	SolidMaterial,
 	SortResult,
+	StreamFrameBuilder,
 	WorldRenderPacket,
 )
+from .objects import Billboard3D, DrawStream3D
 
 __all__ = [
 	"Camera3D",
 	"AabbFootprint",
 	"AnimatedImageMaterial",
+	"AnimationProjection",
 	"Box3D",
+	"Billboard3D",
+	"BillboardFacing",
 	"Collider",
 	"CollisionShape2D",
 	"CollisionWorld",
 	"Color",
 	"DEFAULT_LIGHT_DIRECTION",
 	"FrameContext",
+	"DrawStream3D",
 	"GroundPlane3D",
 	"ImageMaterial",
 	"Line3D",
@@ -72,6 +80,7 @@ __all__ = [
 	"Scene3D",
 	"SolidMaterial",
 	"SortResult",
+	"StreamFrameBuilder",
 	"Text3D",
 	"Vec2",
 	"Vec3",

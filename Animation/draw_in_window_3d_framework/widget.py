@@ -70,6 +70,7 @@ class DrawInWindow3D(dcg.DrawInWindow):
     ) -> None:
         super().__init__(context, **kwargs)
         self.scene_layer = dcg.DrawingList(context, parent=self)
+        self.overlay_layer = dcg.DrawingList(context, parent=self)
         self.publisher = FramePublisher(context, parent=self.scene_layer)
         self.scene = scene or Scene3D()
         self.camera = camera or Camera3D(target=(0.0, 0.0, 0.0), yaw_deg=0.0, pitch_deg=52.0, zoom=1.0)
@@ -131,6 +132,7 @@ class DrawInWindow3D(dcg.DrawInWindow):
                 self.scene,
                 self.camera,
                 self.viewport,
+                persistent_overlay_target=self.overlay_layer,
             )
 
         self.last_render_revision = self.publisher.replace_contents(builder)

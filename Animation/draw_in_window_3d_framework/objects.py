@@ -1,10 +1,21 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import math
 from typing import Iterable, Sequence
 
 from .math3d import Vec3, cross, normalized, subtract
-from .scene import FrameContext, Material3D, SolidMaterial, WorldRenderPacket
+from .scene import (
+    AnimatedImageMaterial,
+    AnimationProjection,
+    BillboardFacing,
+    FrameContext,
+    ImageMaterial,
+    Material3D,
+    SolidMaterial,
+    StreamFrameBuilder,
+    WorldRenderPacket,
+)
 
 
 def polygon_normal(points: Sequence[Vec3]) -> Vec3:
@@ -167,3 +178,79 @@ class Box3D:
                 normal=normal,
                 cull_back_face=True,
             )
+
+
+def billboard_quad(anchor: Vec3, world_size: tuple[float, float], yaw_deg: float) -> tuple[Vec3, Vec3, Vec3, Vec3]:
+    half_width = world_size[0] * 0.5
+    yaw = math.radians(yaw_deg)
+    right_x = math.cos(yaw) * half_width
+    right_y = -math.sin(yaw) * half_width
+    left = (anchor[0] - right_x, anchor[1] - right_y, anchor[2])
+    right = (anchor[0] + right_x, anchor[1] + right_y, anchor[2])
+    return (
+        (left[0], left[1], anchor[2] + world_size[1]),
+        (right[0], right[1], anchor[2] + world_size[1]),
+        right,
+        left,
+    )
+
+
+@dataclass
+class Billboard3D:
+    anchor: Vec3
+    world_size: tuple[float, float]
+    material: ImageMaterial | AnimatedImageMaterial
+    facing: BillboardFacing = BillboardFacing.CAMERA_YAW
+    visible: bool = True
+
+    def collect(self, frame: FrameContext) -> Iterable[WorldRenderPacket]:
+        if self.facing is not BillboardFacing.CAMERA_YAW:
+            raise ValueError(f"Unsupported billboard facing: {self.facing}")
+        points = billboard_quad(self.anchor, self.world_size, frame.camera.yaw_deg)
+        animation_projection = (
+            self.material.projection_policy
+            if isinstance(self.material, AnimatedImageMaterial)
+            else None
+        )
+        yield WorldRenderPacket(
+            kind="polygon",
+            points=points,
+            material=self.material,
+            animation_projection=animation_projection,
+            line_occluder=False,
+            image_clip_to_viewport=animation_projection is AnimationProjection.OCCLUDABLE_WORLD,
+            cache_key=self,
+            world_size=self.world_size,
+        )
+
+
+@dataclass
+class DrawStream3D:
+    projection_policy: AnimationProjection
+    frame_count: int
+    loop_seconds: float
+    frame_builder: StreamFrameBuilder
+    anchor: Vec3 | None = None
+    world_size: tuple[float, float] = (1.0, 1.0)
+    visible: bool = True
+
+    def __post_init__(self) -> None:
+        if self.frame_count < 1:
+            raise ValueError("frame_count must be at least 1")
+        if self.loop_seconds <= 0.0:
+            raise ValueError("loop_seconds must be positive")
+        if self.projection_policy is AnimationProjection.PERSISTENT_OVERLAY and self.anchor is None:
+            raise ValueError("persistent overlays require an anchor")
+
+    def collect(self, frame: FrameContext) -> Iterable[WorldRenderPacket]:
+        yield WorldRenderPacket(
+            kind="stream",
+            points=(self.anchor,) if self.anchor is not None else (),
+            animation_projection=self.projection_policy,
+            line_occluder=False,
+            stream_frame_count=self.frame_count,
+            stream_loop_seconds=self.loop_seconds,
+            stream_frame_builder=self.frame_builder,
+            cache_key=self,
+            world_size=self.world_size,
+        )

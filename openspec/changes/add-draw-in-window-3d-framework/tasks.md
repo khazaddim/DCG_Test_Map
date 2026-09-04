@@ -99,17 +99,17 @@
 - [x] 4B.3 Add or correct focused tests and resolve review findings before starting 4C
 
 ### Sub-milestone 4C: Projection Policies, Streams, Billboards, and Integration (continuous GPT-5.4 implementation; depends on 4B)
-- [ ] 4.5 Define `AnimationProjection` enum: PERSISTENT_OVERLAY, PREPROJECTED_BACKGROUND, OCCLUDABLE_WORLD
-- [ ] 4.6 Implement persistent overlay `DrawStream` policy (outside cleared scene layers, transform-only updates)
-- [ ] 4.7 Implement preprojected non-occludable `DrawStream` policy (rebuilt in back layer, not sorted)
-- [ ] 4.8 Implement preprojected occludable `DrawStream` policy (sorted with faces, viewport-clipped)
-- [ ] 4.9 Implement `Billboard3D` renderable (camera-facing quad with image/animation command)
-- [ ] 4.10 Implement `BillboardFacing.CAMERA_YAW` orientation
-- [ ] 4.11 Ensure texture lifetime survives layer clears (shared textures outside scene layers)
-- [ ] 4.12 Verify camera/viewport change invalidates preprojected streams but preserves persistent overlays
-- [ ] 4.13 Port demo 14 features: solid boxes, textured player, animated water, overlay marker, occludable trees
-- [ ] 4.14 Write integration tests: stream continuity, rebuild on camera change, overlay survival
-- [ ] 4.15 Verify all object types coexist through the common packet API
+- [x] 4.5 Define `AnimationProjection` enum: PERSISTENT_OVERLAY, PREPROJECTED_BACKGROUND, OCCLUDABLE_WORLD
+- [x] 4.6 Implement persistent overlay `DrawStream` policy (outside cleared scene layers, transform-only updates)
+- [x] 4.7 Implement preprojected non-occludable `DrawStream` policy (rebuilt in back layer, not sorted)
+- [x] 4.8 Implement preprojected occludable `DrawStream` policy (sorted with faces, viewport-clipped)
+- [x] 4.9 Implement `Billboard3D` renderable (camera-facing quad with image/animation command)
+- [x] 4.10 Implement `BillboardFacing.CAMERA_YAW` orientation
+- [x] 4.11 Ensure texture lifetime survives layer clears (shared textures outside scene layers)
+- [x] 4.12 Verify camera/viewport change invalidates preprojected streams but preserves persistent overlays
+- [x] 4.13 Port demo 14 features: solid boxes, textured player, animated water, overlay marker, occludable trees
+- [x] 4.14 Write integration tests: stream continuity, rebuild on camera change, overlay survival
+- [x] 4.15 Verify all object types coexist through the common packet API
 
 ## Milestone 5: Engineering Mesh Support
 - [ ] 5.1 Implement `TriangleMesh3D` with indexed vertices and triangular faces

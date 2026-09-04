@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from dataclasses import replace
 from typing import Iterable
 
@@ -8,6 +9,7 @@ import dearcygui as dcg
 from .math3d import ProjectionPipeline, shade_directional
 from .scene import (
     AnimatedImageMaterial,
+    AnimationProjection,
     FrameContext,
     ImageMaterial,
     OverlapDepthSorter,
@@ -19,6 +21,11 @@ from .scene import (
     SolidMaterial,
     WorldRenderPacket,
 )
+
+
+@dataclass
+class PersistentOverlayState:
+    transform: dcg.DrawingScale
 
 
 def clear_drawing_list(layer: dcg.DrawingList) -> None:
@@ -130,6 +137,7 @@ class CpuRenderer3D:
     def __init__(self, sorter: RenderSorter | None = None) -> None:
         self.sorter = sorter or OverlapDepthSorter()
         self.depth_epsilon = 1e-5
+        self._persistent_overlays: dict[object, PersistentOverlayState] = {}
 
     def render(
         self,
@@ -138,6 +146,7 @@ class CpuRenderer3D:
         scene: Scene3D,
         camera,
         viewport,
+        persistent_overlay_target: dcg.DrawingList | None = None,
     ) -> RenderStats:
         clear_drawing_list(target)
         dcg.DrawRect(
@@ -154,19 +163,32 @@ class CpuRenderer3D:
         pipeline = ProjectionPipeline(camera, viewport)
         packets = list(self._collect_packets(scene, frame))
         clipped_count = 0
+        overlay_entries: list[ProjectedRenderEntry] = []
+        background_entries: list[ProjectedRenderEntry] = []
         projected_entries: list[ProjectedRenderEntry] = []
         for stable_index, packet in enumerate(packets):
             entry = self._project_packet(packet, stable_index, frame, pipeline)
             if entry is None:
                 clipped_count += 1
                 continue
+            if entry.kind == "stream":
+                if entry.animation_projection is AnimationProjection.PERSISTENT_OVERLAY:
+                    overlay_entries.append(entry)
+                    continue
+                if entry.animation_projection is AnimationProjection.PREPROJECTED_BACKGROUND:
+                    background_entries.append(entry)
+                    continue
             projected_entries.append(entry)
 
         sorted_result = self.sorter.sort(projected_entries, frame)
         emitted_count = 1
+        for entry in background_entries:
+            emitted_count += self._emit_entry(context, target, entry, frame, ())
         polygon_entries = tuple(entry for entry in sorted_result.entries if entry.kind == "polygon")
         for entry in sorted_result.entries:
             emitted_count += self._emit_entry(context, target, entry, frame, polygon_entries)
+        if persistent_overlay_target is not None:
+            self._sync_persistent_overlays(context, persistent_overlay_target, overlay_entries, frame)
 
         return RenderStats(
             packet_count=len(packets),
@@ -191,6 +213,65 @@ class CpuRenderer3D:
         frame: FrameContext,
         pipeline: ProjectionPipeline,
     ) -> ProjectedRenderEntry | None:
+        if packet.kind == "stream":
+            if packet.animation_projection is AnimationProjection.PERSISTENT_OVERLAY:
+                if len(packet.points) != 1 or packet.world_size is None:
+                    return None
+                camera_point = frame.camera.world_to_camera(packet.points[0], frame.viewport)
+                if camera_point[2] < frame.camera.near_plane:
+                    return ProjectedRenderEntry(
+                        kind="stream",
+                        stable_index=stable_index,
+                        average_depth=float("inf"),
+                        points=(),
+                        animation_projection=packet.animation_projection,
+                        line_occluder=False,
+                        stream_frame_count=packet.stream_frame_count,
+                        stream_loop_seconds=packet.stream_loop_seconds,
+                        stream_frame_builder=packet.stream_frame_builder,
+                        cache_key=packet.cache_key,
+                        visible=False,
+                    )
+                center = frame.camera.camera_to_screen(camera_point, frame.viewport)
+                focal_length = frame.camera.focal_length(frame.viewport)
+                scale_x = packet.world_size[0] * focal_length / camera_point[2]
+                scale_y = packet.world_size[1] * focal_length / camera_point[2]
+                visible = not (
+                    center[0] + scale_x * 0.5 < 0.0
+                    or center[0] - scale_x * 0.5 > frame.viewport.width
+                    or center[1] + scale_y * 0.5 < 0.0
+                    or center[1] - scale_y * 0.5 > frame.viewport.height
+                )
+                return ProjectedRenderEntry(
+                    kind="stream",
+                    stable_index=stable_index,
+                    average_depth=camera_point[2],
+                    points=(),
+                    animation_projection=packet.animation_projection,
+                    line_occluder=False,
+                    stream_frame_count=packet.stream_frame_count,
+                    stream_loop_seconds=packet.stream_loop_seconds,
+                    stream_frame_builder=packet.stream_frame_builder,
+                    cache_key=packet.cache_key,
+                    overlay_origin=center,
+                    overlay_scale=(scale_x, scale_y),
+                    visible=visible,
+                )
+            if packet.animation_projection is AnimationProjection.PREPROJECTED_BACKGROUND:
+                return ProjectedRenderEntry(
+                    kind="stream",
+                    stable_index=stable_index,
+                    average_depth=0.0,
+                    points=(),
+                    animation_projection=packet.animation_projection,
+                    line_occluder=False,
+                    stream_frame_count=packet.stream_frame_count,
+                    stream_loop_seconds=packet.stream_loop_seconds,
+                    stream_frame_builder=packet.stream_frame_builder,
+                    cache_key=packet.cache_key,
+                )
+            return None
+
         if packet.kind == "polygon":
             if (
                 packet.cull_back_face
@@ -199,14 +280,33 @@ class CpuRenderer3D:
             ):
                 return None
             image_material = packet.material if isinstance(packet.material, ImageMaterial) else None
-            complete_quad = pipeline.project_complete_quad(packet.points) if image_material is not None else None
+            raw_camera_points = tuple(
+                frame.camera.world_to_camera(point, frame.viewport)
+                for point in packet.points
+            )
+            if any(point[2] < frame.camera.near_plane for point in raw_camera_points):
+                raw_camera_points = ()
+            complete_quad = (
+                pipeline.project_complete_quad(packet.points)
+                if image_material is not None and not packet.image_clip_to_viewport
+                else None
+            )
             projected = pipeline.project_polygon(packet.points)
             if projected is None:
                 return None
+            image_points: tuple[tuple[float, float], ...] = ()
             if image_material is not None and complete_quad is not None:
                 points = complete_quad.points
                 average_depth = complete_quad.average_depth
                 material = image_material
+            elif image_material is not None and packet.image_clip_to_viewport and len(raw_camera_points) == 4:
+                points = projected.points
+                average_depth = projected.average_depth
+                material = image_material
+                image_points = tuple(
+                    frame.camera.camera_to_screen(point, frame.viewport)
+                    for point in raw_camera_points
+                )
             else:
                 points = projected.points
                 average_depth = projected.average_depth
@@ -221,12 +321,16 @@ class CpuRenderer3D:
                 stable_index=stable_index,
                 average_depth=average_depth,
                 points=points,
-                camera_points=tuple(
+                camera_points=raw_camera_points or tuple(
                     frame.camera.world_to_camera(point, frame.viewport)
                     for point in packet.points
                 ),
                 material=material,
+                animation_projection=packet.animation_projection,
                 line_occluder=self._resolve_line_occluder(packet, material),
+                image_points=image_points,
+                image_clip_to_viewport=packet.image_clip_to_viewport,
+                cache_key=packet.cache_key,
             )
 
         if packet.kind == "line":
@@ -345,7 +449,7 @@ class CpuRenderer3D:
             if isinstance(entry.material, AnimatedImageMaterial):
                 return self._emit_animated_image(context, target, entry, frame)
             if isinstance(entry.material, ImageMaterial):
-                return self._emit_tessellated_image(context, target, entry, frame, entry.material.texture)
+                return self._emit_image(context, target, entry, frame, entry.material.texture)
             fill = entry.material.fill if entry.material is not None else None
             outline = entry.material.outline if entry.material is not None else 0
             thickness = entry.material.thickness if entry.material is not None else -1
@@ -358,6 +462,9 @@ class CpuRenderer3D:
                 thickness=thickness,
             )
             return 1
+
+        if entry.kind == "stream":
+            return self._emit_stream(context, target, entry, frame)
 
         if entry.kind == "line":
             color = 0
@@ -402,11 +509,12 @@ class CpuRenderer3D:
     ) -> int:
         material = entry.material
         assert isinstance(material, AnimatedImageMaterial)
-        stream = dcg.utils.DrawStream(context, parent=target)
+        stream_parent = self._stream_parent(context, target, entry, frame)
+        stream = dcg.utils.DrawStream(context, parent=stream_parent)
         stream.time_modulus = material.loop_seconds
         for frame_index in range(len(material.frames)):
             with dcg.DrawingList(context) as drawing:
-                self._emit_tessellated_image(
+                self._emit_image(
                     context,
                     drawing,
                     entry,
@@ -415,6 +523,38 @@ class CpuRenderer3D:
                 )
             stream.push(drawing, material.frame_end_time(frame_index))
         return 1
+
+    def _emit_stream(
+        self,
+        context: dcg.Context,
+        target: dcg.DrawingList,
+        entry: ProjectedRenderEntry,
+        frame: FrameContext,
+    ) -> int:
+        builder = entry.stream_frame_builder
+        if builder is None or entry.stream_frame_count < 1 or entry.stream_loop_seconds <= 0.0:
+            return 0
+        stream = dcg.utils.DrawStream(context, parent=target)
+        stream.time_modulus = entry.stream_loop_seconds
+        frame_duration = entry.stream_loop_seconds / entry.stream_frame_count
+        for frame_index in range(entry.stream_frame_count):
+            with dcg.DrawingList(context) as drawing:
+                builder(context, drawing, frame, frame_index)
+            stream.push(drawing, (frame_index + 1) * frame_duration)
+        return 1
+
+    def _emit_image(
+        self,
+        context: dcg.Context,
+        target: dcg.DrawingList,
+        entry: ProjectedRenderEntry,
+        frame: FrameContext,
+        texture: object,
+    ) -> int:
+        if entry.image_clip_to_viewport and len(entry.image_points) == 4:
+            parent = self._stream_parent(context, target, entry, frame)
+            return self._emit_quad_image(context, parent, entry, texture)
+        return self._emit_tessellated_image(context, target, entry, frame, texture)
 
     def _emit_tessellated_image(
         self,
@@ -462,6 +602,92 @@ class CpuRenderer3D:
                 )
                 emitted += 1
         return emitted
+
+    def _emit_quad_image(
+        self,
+        context: dcg.Context,
+        target: dcg.DrawingList,
+        entry: ProjectedRenderEntry,
+        texture: object,
+    ) -> int:
+        material = entry.material
+        assert isinstance(material, ImageMaterial)
+        dcg.DrawImage(
+            context,
+            parent=target,
+            texture=texture,
+            p1=entry.image_points[0],
+            p2=entry.image_points[1],
+            p3=entry.image_points[2],
+            p4=entry.image_points[3],
+            uv1=material.uv_coordinates[0],
+            uv2=material.uv_coordinates[1],
+            uv3=material.uv_coordinates[2],
+            uv4=material.uv_coordinates[3],
+        )
+        return 1
+
+    def _stream_parent(
+        self,
+        context: dcg.Context,
+        target: dcg.DrawingList,
+        entry: ProjectedRenderEntry,
+        frame: FrameContext,
+    ) -> dcg.DrawingList:
+        if not entry.image_clip_to_viewport:
+            return target
+        return dcg.DrawingClip(
+            context,
+            parent=target,
+            pmin=(0.0, 0.0),
+            pmax=(frame.viewport.width, frame.viewport.height),
+            clip_rendering=True,
+        )
+
+    def _overlay_key(self, entry: ProjectedRenderEntry) -> object:
+        cache_key = entry.cache_key
+        if cache_key is None:
+            return ("stable", entry.stable_index)
+        try:
+            hash(cache_key)
+        except TypeError:
+            return (type(cache_key), id(cache_key))
+        return cache_key
+
+    def _sync_persistent_overlays(
+        self,
+        context: dcg.Context,
+        target: dcg.DrawingList,
+        entries: Iterable[ProjectedRenderEntry],
+        frame: FrameContext,
+    ) -> None:
+        seen_keys: set[object] = set()
+        for entry in entries:
+            key = self._overlay_key(entry)
+            seen_keys.add(key)
+            state = self._persistent_overlays.get(key)
+            if state is None:
+                transform = dcg.DrawingScale(context, parent=target, show=False)
+                builder = entry.stream_frame_builder
+                if builder is not None and entry.stream_frame_count > 0 and entry.stream_loop_seconds > 0.0:
+                    stream = dcg.utils.DrawStream(context, parent=transform)
+                    stream.time_modulus = entry.stream_loop_seconds
+                    frame_duration = entry.stream_loop_seconds / entry.stream_frame_count
+                    for frame_index in range(entry.stream_frame_count):
+                        with dcg.DrawingList(context) as drawing:
+                            builder(context, drawing, frame, frame_index)
+                        stream.push(drawing, (frame_index + 1) * frame_duration)
+                state = PersistentOverlayState(transform=transform)
+                self._persistent_overlays[key] = state
+            state.transform.show = entry.visible
+            if entry.visible and entry.overlay_origin is not None:
+                state.transform.origin = entry.overlay_origin
+                state.transform.scales = entry.overlay_scale
+        for key in list(self._persistent_overlays):
+            if key in seen_keys:
+                continue
+            self._persistent_overlays[key].transform.delete_item()
+            del self._persistent_overlays[key]
 
     def _visible_line_segments(
         self,

@@ -1,14 +1,26 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from enum import Enum
 import heapq
-from typing import Iterable, Literal, Protocol, Sequence, TypeAlias, runtime_checkable
+from typing import Any, Callable, Iterable, Literal, Protocol, Sequence, TypeAlias, runtime_checkable
 
 from .math3d import DEFAULT_LIGHT_DIRECTION, Camera3D, Color, Vec2, Vec3, Viewport, cross, dot, subtract
 
 
 ColorValue: TypeAlias = Color | int
-PacketKind: TypeAlias = Literal["polygon", "line", "text"]
+PacketKind: TypeAlias = Literal["polygon", "line", "text", "stream"]
+StreamFrameBuilder: TypeAlias = Callable[[Any, Any, "FrameContext", int], None]
+
+
+class AnimationProjection(Enum):
+    PERSISTENT_OVERLAY = "persistent_overlay"
+    PREPROJECTED_BACKGROUND = "preprojected_background"
+    OCCLUDABLE_WORLD = "occludable_world"
+
+
+class BillboardFacing(Enum):
+    CAMERA_YAW = "camera_yaw"
 
 
 @dataclass(frozen=True)
@@ -80,6 +92,7 @@ class AnimatedImageMaterial(ImageMaterial):
     frames: tuple[object, ...] = ()
     loop_seconds: float = 1.0
     frame_offset: int = 0
+    projection_policy: AnimationProjection = AnimationProjection.OCCLUDABLE_WORLD
 
     def __post_init__(self) -> None:
         if not self.frames:
@@ -102,14 +115,21 @@ class WorldRenderPacket:
     kind: PacketKind
     points: tuple[Vec3, ...]
     material: Material3D | None = None
+    animation_projection: AnimationProjection | None = None
     line_occluder: bool | None = None
     normal: Vec3 | None = None
     cull_back_face: bool = False
+    image_clip_to_viewport: bool = False
     text: str = ""
     text_size: float = 0.0
     text_min_size: float = 0.0
     text_max_size: float = float("inf")
     text_color: ColorValue = (255, 255, 255)
+    stream_frame_count: int = 0
+    stream_loop_seconds: float = 0.0
+    stream_frame_builder: StreamFrameBuilder | None = None
+    cache_key: object | None = None
+    world_size: tuple[float, float] | None = None
 
 
 @dataclass(frozen=True)
@@ -120,10 +140,20 @@ class ProjectedRenderEntry:
     points: tuple[Vec2, ...]
     camera_points: tuple[Vec3, ...] = ()
     material: Material3D | None = None
+    animation_projection: AnimationProjection | None = None
     line_occluder: bool = True
+    image_points: tuple[Vec2, ...] = ()
+    image_clip_to_viewport: bool = False
     text: str = ""
     text_size: float = 0.0
     text_color: ColorValue = (255, 255, 255)
+    stream_frame_count: int = 0
+    stream_loop_seconds: float = 0.0
+    stream_frame_builder: StreamFrameBuilder | None = None
+    cache_key: object | None = None
+    overlay_origin: Vec2 | None = None
+    overlay_scale: tuple[float, float] = (1.0, 1.0)
+    visible: bool = True
 
 
 @dataclass(frozen=True)
