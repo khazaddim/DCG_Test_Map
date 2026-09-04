@@ -769,6 +769,21 @@ and uses it only for the later line-fragment depth test. This keeps decorative
 surfaces such as demo 11's road and water bands in normal back-to-front polygon
 ordering while preventing them from punching holes in grid or border linework.
 
+Current milestone-4 behavior makes the same distinction for demo 14 tree
+billboards. Their quads still participate in polygon depth ordering against
+boxes and other world faces, but they are presently marked as non-occluding for
+the line-fragment pass. This is an intentional design step back toward the
+original demo 14 look and interaction profile: trees may sort correctly in the
+world while grid and border lines can still show through them rather than being
+split aggressively.
+
+This is not the final design claim for billboards. The team should revisit this
+after milestone 4 if a compromise is needed between visual parity, line-legible
+map overlays, and a stronger hidden-line interpretation around billboard
+silhouettes. Any revisit should evaluate both appearance and input/render cost,
+since excluding billboards from the line-occlusion candidate set also reduced
+the responsiveness problems observed during the first framework demo-14 port.
+
 This is a pragmatic milestone choice, not a full hidden-line system. Midpoint
 sampling is sufficient here because the split points already isolate changes in
 polygon coverage, and the current demos use planar faces with straight line
@@ -1052,7 +1067,12 @@ framework must model these as separate policies.
   entry's exact position among solid and textured faces. A `DrawingClip`
   bounds the stream to the viewport, allowing partially visible trees without
   placing unclipped image coordinates directly in the canvas. Scene rebuilds
-  discard and recreate this stream for the current projection.
+  discard and recreate this stream for the current projection. In the current
+  milestone-4 implementation, these billboard quads do not also occlude grid or
+  border line fragments; they are sortable world entries, but they opt out of
+  the later line-occlusion pass to stay closer to the original demo 14 visual
+  result and to avoid the extra candidate work that made early framework
+  interactions feel sluggish.
 
 All three streams advance without calling `render_if_needed()`. Camera target,
 yaw, pitch, zoom, viewport, or relevant object-geometry changes invalidate
