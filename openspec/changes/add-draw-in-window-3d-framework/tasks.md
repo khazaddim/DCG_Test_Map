@@ -167,6 +167,7 @@
 - [ ] 7.2 Add type annotations on all public interfaces
 - [ ] 7.3 Add lifecycle documentation for widget, scene, handles, and streams
 - [ ] 7.3.1 Add a primitive-addition checklist requiring occlusion/visibility review against existing primitive families
+- [ ] 7.3.2 Revisit billboard line occlusion and choose a final compromise between world sorting, line readability, and responsiveness
 - [ ] 7.4 Maintain demo 11 framework port under `Animation/ported_demos/` and preserve the legacy original in `Animation/`
 - [ ] 7.5 Migrate demo 12 to a framework-backed port under `Animation/ported_demos/`
 - [ ] 7.6 Migrate demo 13 to a framework-backed port under `Animation/ported_demos/`
