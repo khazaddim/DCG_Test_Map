@@ -76,14 +76,17 @@ class ImageMaterial:
 
 @dataclass(frozen=True)
 class AnimatedImageMaterial(ImageMaterial):
+    texture: object | None = None
     frames: tuple[object, ...] = ()
     loop_seconds: float = 1.0
     frame_offset: int = 0
 
     def __post_init__(self) -> None:
-        super().__post_init__()
         if not self.frames:
             raise ValueError("frames must contain at least one texture")
+        if self.texture is None:
+            object.__setattr__(self, "texture", self.frames[0])
+        super().__post_init__()
         if self.loop_seconds <= 0.0:
             raise ValueError("loop_seconds must be positive")
 

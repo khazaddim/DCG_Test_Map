@@ -94,9 +94,9 @@
 - [x] 4.4 Implement `AnimatedImageMaterial` with frame source, loop timing, and frame offset
 
 ### Sub-milestone 4B: 4A Review and Compatibility Gate (GPT-5.4; depends on 4A)
-- [ ] 4B.1 Review the complete 4A implementation against existing material, projection, and draw-command contracts
-- [ ] 4B.2 Review UV correspondence, tessellation edge cases, clipped-quad fallback, animation timing, and resource ownership
-- [ ] 4B.3 Add or correct focused tests and resolve review findings before starting 4C
+- [x] 4B.1 Review the complete 4A implementation against existing material, projection, and draw-command contracts
+- [x] 4B.2 Review UV correspondence, tessellation edge cases, clipped-quad fallback, animation timing, and resource ownership
+- [x] 4B.3 Add or correct focused tests and resolve review findings before starting 4C
 
 ### Sub-milestone 4C: Projection Policies, Streams, Billboards, and Integration (continuous GPT-5.4 implementation; depends on 4B)
 - [ ] 4.5 Define `AnimationProjection` enum: PERSISTENT_OVERLAY, PREPROJECTED_BACKGROUND, OCCLUDABLE_WORLD

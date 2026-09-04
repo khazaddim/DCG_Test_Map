@@ -58,7 +58,7 @@ def build_scene() -> tuple[Scene3D, Box3D]:
     scene.add(
         Polygon3D(
             points=((0.0, 620.0, 1.0), (WORLD_W, 620.0, 1.0), (WORLD_W, 710.0, 1.0), (0.0, 710.0, 1.0)),
-            material=SolidMaterial(fill=(68, 116, 168), outline=None, thickness=-1.0, shaded=False, line_occluder=True),
+            material=SolidMaterial(fill=(68, 116, 168), outline=None, thickness=-1.0, shaded=False, line_occluder=False),
             cull_back_face=False,
         )
     )
@@ -66,7 +66,7 @@ def build_scene() -> tuple[Scene3D, Box3D]:
     scene.add(
         Polygon3D(
             points=((910.0, 0.0, 2.0), (995.0, 0.0, 2.0), (995.0, WORLD_H, 2.0), (910.0, WORLD_H, 2.0)),
-            material=SolidMaterial(fill=(130, 116, 91), outline=None, thickness=-1.0, shaded=False, line_occluder=True),
+            material=SolidMaterial(fill=(130, 116, 91), outline=None, thickness=-1.0, shaded=False, line_occluder=False),
             cull_back_face=False,
         )
     )

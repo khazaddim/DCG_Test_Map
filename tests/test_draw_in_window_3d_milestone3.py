@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+import math
 from pathlib import Path
 import sys
 
@@ -230,6 +231,35 @@ def test_image_material_emits_one_draw_image_per_tessellation_cell() -> None:
     assert [type(child).__name__ for child in layer.children].count("DrawImage") == 4
 
 
+def test_image_material_preserves_uv_coordinates_on_emitted_draw_image() -> None:
+    context = dcg.Context()
+    texture = dcg.Texture(context)
+    material = ImageMaterial(
+        texture=texture,
+        tessellation=1,
+        uv_coordinates=((0.1, 0.2), (0.8, 0.2), (0.7, 0.9), (0.2, 0.85)),
+    )
+    scene = Scene3D()
+    scene.add(
+        Polygon3D(
+            points=((-10.0, -10.0, 50.0), (10.0, -10.0, 50.0), (10.0, 10.0, 50.0), (-10.0, 10.0, 50.0)),
+            material=material,
+            cull_back_face=False,
+        )
+    )
+    layer = dcg.DrawingList(context)
+
+    CpuRenderer3D().render(context, layer, scene, make_sort_frame().camera, make_sort_frame().viewport)
+
+    draw_image = next(child for child in layer.children if type(child).__name__ == "DrawImage")
+    for emitted_uv, expected_uv in zip(
+        (draw_image.uv1, draw_image.uv2, draw_image.uv3, draw_image.uv4),
+        material.uv_coordinates,
+    ):
+        assert math.isclose(emitted_uv[0], expected_uv[0], rel_tol=0.0, abs_tol=1e-6)
+        assert math.isclose(emitted_uv[1], expected_uv[1], rel_tol=0.0, abs_tol=1e-6)
+
+
 def test_clipped_image_quad_falls_back_to_shaded_solid_polygon() -> None:
     frame = make_sort_frame()
     material = ImageMaterial(texture=object(), fill=(100, 120, 140), shaded=True)
@@ -249,11 +279,37 @@ def test_clipped_image_quad_falls_back_to_shaded_solid_polygon() -> None:
 
 def test_animated_image_material_cycles_frames_with_offset_and_loop_timing() -> None:
     frames = (object(), object(), object())
-    material = AnimatedImageMaterial(texture=frames[0], frames=frames, loop_seconds=1.5, frame_offset=1)
+    material = AnimatedImageMaterial(frames=frames, loop_seconds=1.5, frame_offset=1)
 
+    assert material.texture is frames[0]
     assert material.frame_texture(0) is frames[1]
     assert material.frame_texture(2) is frames[0]
     assert material.frame_end_time(1) == 1.0
+
+
+def test_animated_image_material_emits_draw_stream_frames_with_expected_timing() -> None:
+    context = dcg.Context()
+    textures = (dcg.Texture(context), dcg.Texture(context), dcg.Texture(context))
+    scene = Scene3D()
+    scene.add(
+        Polygon3D(
+            points=((-10.0, -10.0, 50.0), (10.0, -10.0, 50.0), (10.0, 10.0, 50.0), (-10.0, 10.0, 50.0)),
+            material=AnimatedImageMaterial(frames=textures, tessellation=2, loop_seconds=1.5, frame_offset=1),
+            cull_back_face=False,
+        )
+    )
+    layer = dcg.DrawingList(context)
+
+    stats = CpuRenderer3D().render(context, layer, scene, make_sort_frame().camera, make_sort_frame().viewport)
+
+    assert stats.emitted_count == 2
+    stream = next(child for child in layer.children if type(child).__name__ == "DrawStream")
+    assert stream.time_modulus == 1.5
+    assert len(stream.children) == 3
+    assert [type(child).__name__ for child in stream.children] == ["DrawingList", "DrawingList", "DrawingList"]
+    for drawing, texture in zip(stream.children, textures[1:] + textures[:1]):
+        assert [type(child).__name__ for child in drawing.children].count("DrawImage") == 4
+        assert drawing.children[0].texture is texture
 
 
 def test_box_can_override_material_on_selected_faces() -> None:
