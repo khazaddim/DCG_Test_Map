@@ -97,6 +97,7 @@ This distinction is deliberate:
 | 13 | Overlap-aware topological face ordering | `OverlapDepthSorter` with cycle diagnostics and fallback |
 | 13.1 | Textures combined with overlap ordering | Render entries carry material commands without changing the sorter |
 | 14 | Animated tree billboards in the occlusion graph | `Billboard3D` emits sortable geometry plus an image/animation draw command |
+| 15 | Indexed engineering meshes and stable edge-on faces | Prefer exact native fill primitives, but emit outlines as independent native lines |
 
 The repeated code shows the main extraction pressure: adding a visual type
 currently requires copying the whole scene renderer and expanding its argument
@@ -885,6 +886,68 @@ must not pass the unclipped corners to `DrawImage` or omit the face.
 Opaque world surfaces should be ordered together. Explicit overlay layers,
 such as the always-visible star in demos 11.1 and 14, are rendered after world
 geometry and are not accidentally inserted into the occlusion graph.
+
+#### Primitive Emission Stability
+
+Projection and primitive rasterization must be diagnosed as separate stages.
+A valid 3D projection can still expose a poorly conditioned 2D drawing case.
+In demo 15, roof faces produced long, shaded spikes only while rotating into
+or out of view. At those transitions, the projected triangle's signed area
+approached zero as its three finite, viewport-bounded points became nearly
+collinear. The coordinates changed smoothly and never expanded toward the
+visible spike, which ruled out camera projection, clipping, depth sorting, and
+frame publication as causes.
+
+```text
+Normal face        Nearly edge-on       Fully edge-on
+    /\                  ______               ------
+   /  \
+  /____\
+```
+
+The transition is expected: the projected signed area approaches zero and
+then changes sign as the face changes from front-facing to back-facing. A thin
+triangle is therefore valid input, not by itself evidence of failed projection.
+
+A minimal diagnostic submitted one real roof face directly to DearCyGui using
+four equivalent 2D configurations: fill-only `DrawTriangle`, `DrawTriangle`
+with an integrated outline, `DrawPolygon` with an integrated outline, and a
+fill-only `DrawTriangle` followed by three independent `DrawLine` edges. Only
+the two integrated-outline configurations produced spikes. The combined shape
+stroke was constructing an unstable acute-corner join as the face became
+edge-on; because that malformed geometry belonged to the filled primitive, it
+looked like a shaded 3D face rather than a line artifact.
+
+```text
+Nearly parallel offset edges
+  \  /
+   \/
+   |
+   |
+   |  calculated join extends far beyond the face
+```
+
+Independent edge lines terminate at the original projected endpoints. They do
+not need to intersect adjacent offset edges to construct a polygon corner, so
+the near-collinear case cannot create this unbounded join.
+
+The renderer therefore follows these emission rules:
+
+1. Use the most specific native DearCyGui fill primitive available:
+  `DrawTriangle` for three points, `DrawQuad` for four points, and
+  `DrawPolygon` only for clipped or general polygons.
+2. Submit filled primitives without their integrated outline (`color=0`).
+3. Emit each requested boundary edge as an independent native `DrawLine`.
+4. Keep polygon cleanup before emission, but do not treat finite coordinates
+  and nonzero area as proof that every combined fill/stroke path is stable.
+
+This policy costs additional retained draw nodes, proportional to the number
+of outlined edges. That tradeoff is intentional for the framework's small CPU
+scenes: independent lines need only their two finite endpoints and avoid the
+unbounded corner-join calculation. A regression test must verify the emitted
+node structure for a nearly collinear outlined face, and visual diagnostics
+should compare primitive configurations with identical coordinates before
+changing projection or ordering logic.
 
 ### Layer 6: DearCyGui Integration
 
