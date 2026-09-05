@@ -131,6 +131,7 @@
 - [ ] 5.17 Write unit tests: degenerate and inverted tetrahedra handling
 - [ ] 5.18 Write integration test: tetrahedral fixture renders only exterior faces with correct colors and pickable source IDs
 - [ ] 5.19 Write integration test: no tetrahedron represented as individual scene object
+- [ ] 5.20 Create demo 15 with buildings using varied mesh-based roof shapes
 
 ## Milestone 5.5: Performance Profiling Fixtures
 - [ ] 5.5.1 Ensure each pipeline stage (projection/clipping, broad-phase, overlap tests, topological sort, DCG node creation) is a separate callable boundary
