@@ -1,4 +1,8 @@
-"""Isolate DearCyGui triangle behavior at a 3D face visibility transition."""
+"""Isolate DearCyGui triangle behavior at a 3D face visibility transition.
+
+See ``16_triangle_transition_diagnostic.md`` for the investigation, evidence,
+and the framework workaround derived from this diagnostic.
+"""
 
 from __future__ import annotations
 
