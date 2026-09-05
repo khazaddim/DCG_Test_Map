@@ -631,6 +631,16 @@ frustum culling, cached boundary extraction, optional spatial partitioning,
 and a mesh-specific ordering strategy. A depth-buffered backend may eventually
 be preferable, while retaining `Scene3D` and the same mesh-facing public API.
 
+Until spatial acceleration exists, treat `OverlapDepthSorter` as a small-scene
+quality mode for mesh previews. It performs pairwise projected-face checks, so
+roughly 500 visible mesh triangles is the practical upper bound for interactive
+use on the pure-Python path. For larger `TriangleMesh3D` skins or
+`TetrahedralMesh3D` exteriors, configure `CpuRenderer3D(sorter=AverageDepthSorter())`
+when approximate painter ordering is acceptable, or decimate/filter the visible
+surface before rendering. Scenes in the thousands of faces should be profiled
+before enabling overlap-aware ordering, and tens-of-thousands-face engineering
+models should wait for spatial indexing or a depth-buffered backend.
+
 ### Layer 3: Render Packets and Materials
 
 One common representation must replace the progressively expanded

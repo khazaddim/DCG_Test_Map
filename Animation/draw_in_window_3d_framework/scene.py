@@ -28,6 +28,16 @@ class BillboardFacing(Enum):
     CAMERA_YAW = "camera_yaw"
 
 
+class FieldAssociation(Enum):
+    CELL = "cell"
+    NODE = "node"
+
+
+class OutOfRangePolicy(Enum):
+    CLAMP = "clamp"
+    TRANSPARENT = "transparent"
+
+
 @dataclass(frozen=True)
 class FrameContext:
     camera: Camera3D
@@ -57,6 +67,56 @@ class SolidMaterial:
     shaded: bool = True
     blend_mode: str | None = None
     line_occluder: bool = True
+
+
+ColorMap: TypeAlias = Callable[[float], ColorValue]
+
+
+def grayscale_color_map(amount: float) -> Color:
+    channel = int(round(max(0.0, min(1.0, amount)) * 255.0))
+    return channel, channel, channel
+
+
+def turbo_color_map(amount: float) -> Color:
+    amount = max(0.0, min(1.0, amount))
+    red = int(round(34.0 + 221.0 * min(1.0, max(0.0, amount * 1.7))))
+    green = int(round(48.0 + 207.0 * (1.0 - abs(amount - 0.5) * 2.0)))
+    blue = int(round(180.0 * max(0.0, 1.0 - amount * 1.25)))
+    return red, green, blue
+
+
+@dataclass(frozen=True)
+class ScalarFieldMaterial:
+    values: tuple[float, ...]
+    association: FieldAssociation = FieldAssociation.CELL
+    color_map: ColorMap = turbo_color_map
+    value_range: tuple[float, float] | None = None
+    out_of_range: OutOfRangePolicy = OutOfRangePolicy.CLAMP
+    outline: ColorValue | None = None
+    thickness: float = -1.0
+    shaded: bool = True
+    blend_mode: str | None = None
+    line_occluder: bool = True
+    fill: ColorValue | None = None
+
+    def color_for_value(self, value: float) -> ColorValue | None:
+        value_min, value_max = self.resolved_range()
+        if value_max <= value_min:
+            amount = 0.0
+        else:
+            amount = (value - value_min) / (value_max - value_min)
+        if amount < 0.0 or amount > 1.0:
+            if self.out_of_range is OutOfRangePolicy.TRANSPARENT:
+                return None
+            amount = max(0.0, min(1.0, amount))
+        return self.color_map(amount)
+
+    def resolved_range(self) -> tuple[float, float]:
+        if self.value_range is not None:
+            return self.value_range
+        if not self.values:
+            return 0.0, 1.0
+        return min(self.values), max(self.values)
 
 
 @dataclass(frozen=True)
@@ -137,6 +197,7 @@ class WorldRenderPacket:
     cache_key: object | None = None
     world_size: tuple[float, float] | None = None
     billboard: bool = False
+    source_id: int | None = None
 
 
 @dataclass(frozen=True)
@@ -163,6 +224,7 @@ class ProjectedRenderEntry:
     overlay_scale: tuple[float, float] = (1.0, 1.0)
     visible: bool = True
     billboard: bool = False
+    source_id: int | None = None
 
 
 @dataclass(frozen=True)
@@ -195,6 +257,17 @@ class Scene3D:
 
     def remove(self, handle: ObjectHandle) -> None:
         del self._objects[handle.object_id]
+
+    def update_object(self, handle: ObjectHandle, **changes: object) -> None:
+        item = self.get(handle)
+        updater = getattr(item, "update_object", None)
+        if updater is None:
+            for name, value in changes.items():
+                if not hasattr(item, name):
+                    raise AttributeError(f"{type(item).__name__} has no field {name!r}")
+                setattr(item, name, value)
+            return
+        updater(**changes)
 
     def iter_visible(self) -> Iterable[Renderable3D]:
         for item in self._objects.values():

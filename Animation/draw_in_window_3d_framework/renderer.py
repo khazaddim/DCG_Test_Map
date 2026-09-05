@@ -344,6 +344,7 @@ class CpuRenderer3D:
                 image_clip_to_viewport=packet.image_clip_to_viewport,
                 cache_key=packet.cache_key,
                 billboard=packet.billboard,
+                source_id=packet.source_id,
             )
 
         if packet.kind == "line":
@@ -361,6 +362,7 @@ class CpuRenderer3D:
                 material=packet.material,
                 line_render_layer=packet.line_render_layer,
                 line_occluder=False,
+                source_id=packet.source_id,
             )
 
         if packet.kind == "text":

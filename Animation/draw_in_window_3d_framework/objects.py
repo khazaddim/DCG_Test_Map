@@ -1,18 +1,20 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 import math
 from typing import Iterable, Sequence
 
-from .math3d import Vec3, cross, normalized, subtract
+from .math3d import Vec3, cross, dot, normalized, subtract
 from .scene import (
     AnimatedImageMaterial,
     AnimationProjection,
     BillboardFacing,
+    FieldAssociation,
     FrameContext,
     ImageMaterial,
     LineRenderLayer,
     Material3D,
+    ScalarFieldMaterial,
     SolidMaterial,
     StreamFrameBuilder,
     WorldRenderPacket,
@@ -28,6 +30,250 @@ def polygon_normal(points: Sequence[Vec3]) -> Vec3:
             subtract(points[2], points[0]),
         )
     )
+
+
+def _color_has_translucent_alpha(color: object) -> bool:
+    return isinstance(color, tuple) and len(color) == 4 and color[3] < 255
+
+
+def _material_is_translucent(material: Material3D | ScalarFieldMaterial) -> bool:
+    return material.blend_mode is not None or _color_has_translucent_alpha(material.fill)
+
+
+def _oriented_away_from_opposite(
+    vertices: tuple[Vec3, ...],
+    face: tuple[int, int, int],
+    opposite_index: int,
+) -> tuple[int, int, int]:
+    first, second, third = (vertices[index] for index in face)
+    normal = cross(subtract(second, first), subtract(third, first))
+    toward_opposite = subtract(vertices[opposite_index], first)
+    if dot(normal, toward_opposite) > 0.0:
+        return face[0], face[2], face[1]
+    return face
+
+
+@dataclass(frozen=True)
+class MeshEdgeStyle:
+    color: tuple[int, int, int] | tuple[int, int, int, int] | int = (24, 27, 25, 140)
+    thickness: float = -1.0
+    render_layer: LineRenderLayer = LineRenderLayer.WORLD
+
+
+@dataclass(frozen=True)
+class MeshTriangle:
+    indices: tuple[int, int, int]
+    source_id: int
+
+
+@dataclass
+class TriangleMesh3D:
+    vertices: tuple[Vec3, ...]
+    triangles: tuple[tuple[int, int, int], ...]
+    material: Material3D | ScalarFieldMaterial
+    source_ids: tuple[int, ...] = ()
+    edges: MeshEdgeStyle | None = None
+    cull_back_faces: bool = True
+    visible: bool = True
+
+    def __post_init__(self) -> None:
+        self.vertices = tuple(self.vertices)
+        self.triangles = tuple(tuple(triangle) for triangle in self.triangles)  # type: ignore[assignment]
+        if self.source_ids and len(self.source_ids) != len(self.triangles):
+            raise ValueError("source_ids must contain one id per triangle")
+        self._validate_indices()
+
+    def collect(self, frame: FrameContext) -> Iterable[WorldRenderPacket]:
+        del frame
+        for triangle_index, triangle in enumerate(self.triangles):
+            source_id = self.source_ids[triangle_index] if self.source_ids else triangle_index
+            yield from self._collect_triangle(MeshTriangle(triangle, source_id))
+
+    def update_object(self, **changes: object) -> None:
+        for name, value in changes.items():
+            if name == "vertices":
+                self.vertices = tuple(value)  # type: ignore[arg-type]
+                self._validate_indices()
+            elif name == "triangles":
+                self.triangles = tuple(tuple(triangle) for triangle in value)  # type: ignore[assignment, union-attr]
+                self._validate_indices()
+            elif name == "source_ids":
+                source_ids = tuple(value)  # type: ignore[arg-type]
+                if source_ids and len(source_ids) != len(self.triangles):
+                    raise ValueError("source_ids must contain one id per triangle")
+                self.source_ids = source_ids
+            elif name in {"material", "edges", "cull_back_faces", "visible"}:
+                setattr(self, name, value)
+            else:
+                raise AttributeError(f"TriangleMesh3D has no field {name!r}")
+
+    def _collect_triangle(self, triangle: MeshTriangle) -> Iterable[WorldRenderPacket]:
+        if len(set(triangle.indices)) != 3:
+            return
+        points = tuple(self.vertices[index] for index in triangle.indices)
+        normal = polygon_normal(points)
+        if normal == (0.0, 0.0, 0.0):
+            return
+        material = self._triangle_material(triangle)
+        if material is None:
+            return
+        yield WorldRenderPacket(
+            kind="polygon",
+            points=points,
+            material=material,
+            normal=normal,
+            cull_back_face=self.cull_back_faces and not _material_is_translucent(material),
+            source_id=triangle.source_id,
+        )
+        if _material_is_translucent(material):
+            yield WorldRenderPacket(
+                kind="polygon",
+                points=tuple(reversed(points)),
+                material=material,
+                normal=(-normal[0], -normal[1], -normal[2]),
+                cull_back_face=False,
+                source_id=triangle.source_id,
+            )
+        if self.edges is not None:
+            yield from self._collect_edges(points, triangle.source_id)
+
+    def _collect_edges(self, points: tuple[Vec3, Vec3, Vec3], source_id: int) -> Iterable[WorldRenderPacket]:
+        assert self.edges is not None
+        material = SolidMaterial(
+            fill=None,
+            outline=self.edges.color,
+            thickness=self.edges.thickness,
+            shaded=False,
+            line_occluder=False,
+        )
+        for start_index, end_index in ((0, 1), (1, 2), (2, 0)):
+            yield WorldRenderPacket(
+                kind="line",
+                points=(points[start_index], points[end_index]),
+                material=material,
+                line_render_layer=self.edges.render_layer,
+                line_occluder=False,
+                source_id=source_id,
+            )
+
+    def _triangle_material(self, triangle: MeshTriangle) -> Material3D | None:
+        material = self.material
+        if not isinstance(material, ScalarFieldMaterial):
+            return material
+        value = self._field_value(material, triangle)
+        if value is None:
+            return None
+        fill = material.color_for_value(value)
+        if fill is None:
+            return None
+        return SolidMaterial(
+            fill=fill,
+            outline=material.outline,
+            thickness=material.thickness,
+            shaded=material.shaded,
+            blend_mode=material.blend_mode,
+            line_occluder=material.line_occluder,
+        )
+
+    def _field_value(self, material: ScalarFieldMaterial, triangle: MeshTriangle) -> float | None:
+        if material.association is FieldAssociation.CELL:
+            if triangle.source_id < 0 or triangle.source_id >= len(material.values):
+                return None
+            return material.values[triangle.source_id]
+        values = []
+        for vertex_index in triangle.indices:
+            if vertex_index < 0 or vertex_index >= len(material.values):
+                return None
+            values.append(material.values[vertex_index])
+        return sum(values) / len(values)
+
+    def _validate_indices(self) -> None:
+        for triangle in self.triangles:
+            if len(triangle) != 3:
+                raise ValueError("triangles must contain exactly three vertex indices")
+            for vertex_index in triangle:
+                if vertex_index < 0 or vertex_index >= len(self.vertices):
+                    raise IndexError("triangle vertex index out of range")
+
+
+@dataclass
+class TetrahedralMesh3D:
+    vertices: tuple[Vec3, ...]
+    cells: tuple[tuple[int, int, int, int], ...]
+    material: Material3D | ScalarFieldMaterial
+    edges: MeshEdgeStyle | None = None
+    cull_back_faces: bool = True
+    visible: bool = True
+    _exterior_faces: tuple[MeshTriangle, ...] | None = field(default=None, init=False, repr=False)
+
+    def __post_init__(self) -> None:
+        self.vertices = tuple(self.vertices)
+        self.cells = tuple(tuple(cell) for cell in self.cells)  # type: ignore[assignment]
+        self._validate_indices()
+
+    def collect(self, frame: FrameContext) -> Iterable[WorldRenderPacket]:
+        surface = TriangleMesh3D(
+            vertices=self.vertices,
+            triangles=tuple(face.indices for face in self.exterior_faces()),
+            material=self.material,
+            source_ids=tuple(face.source_id for face in self.exterior_faces()),
+            edges=self.edges,
+            cull_back_faces=self.cull_back_faces,
+        )
+        yield from surface.collect(frame)
+
+    def exterior_faces(self) -> tuple[MeshTriangle, ...]:
+        if self._exterior_faces is None:
+            self._exterior_faces = self._extract_exterior_faces()
+        return self._exterior_faces
+
+    def update_object(self, **changes: object) -> None:
+        for name, value in changes.items():
+            if name == "vertices":
+                self.vertices = tuple(value)  # type: ignore[arg-type]
+                self._validate_indices()
+            elif name == "cells":
+                self.cells = tuple(tuple(cell) for cell in value)  # type: ignore[assignment, union-attr]
+                self._validate_indices()
+                self._exterior_faces = None
+            elif name in {"material", "edges", "cull_back_faces", "visible"}:
+                setattr(self, name, value)
+            else:
+                raise AttributeError(f"TetrahedralMesh3D has no field {name!r}")
+
+    def _extract_exterior_faces(self) -> tuple[MeshTriangle, ...]:
+        occurrences: dict[tuple[int, int, int], list[tuple[int, tuple[int, int, int], int]]] = {}
+        for cell_index, cell in enumerate(self.cells):
+            if len(set(cell)) != 4:
+                continue
+            face_specs = (
+                ((cell[1], cell[2], cell[3]), cell[0]),
+                ((cell[0], cell[3], cell[2]), cell[1]),
+                ((cell[0], cell[1], cell[3]), cell[2]),
+                ((cell[0], cell[2], cell[1]), cell[3]),
+            )
+            for face, opposite_index in face_specs:
+                key = tuple(sorted(face))
+                occurrences.setdefault(key, []).append((cell_index, face, opposite_index))
+
+        exterior: list[MeshTriangle] = []
+        for matches in occurrences.values():
+            if len(matches) != 1:
+                continue
+            cell_index, face, opposite_index = matches[0]
+            oriented = _oriented_away_from_opposite(self.vertices, face, opposite_index)
+            if polygon_normal(tuple(self.vertices[index] for index in oriented)) == (0.0, 0.0, 0.0):
+                continue
+            exterior.append(MeshTriangle(indices=oriented, source_id=cell_index))
+        return tuple(exterior)
+
+    def _validate_indices(self) -> None:
+        for cell in self.cells:
+            if len(cell) != 4:
+                raise ValueError("cells must contain exactly four vertex indices")
+            for vertex_index in cell:
+                if vertex_index < 0 or vertex_index >= len(self.vertices):
+                    raise IndexError("cell vertex index out of range")
 
 
 @dataclass

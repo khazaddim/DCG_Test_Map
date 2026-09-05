@@ -112,26 +112,26 @@
 - [x] 4.15 Verify all object types coexist through the common packet API
 
 ## Milestone 5: Engineering Mesh Support
-- [ ] 5.1 Implement `TriangleMesh3D` with indexed vertices and triangular faces
-- [ ] 5.2 Implement efficient packet emission (one retained renderable, not per-face objects)
-- [ ] 5.3 Implement `TetrahedralMesh3D` with cell topology storage
-- [ ] 5.4 Implement exterior-face extraction (face keyed by sorted vertex indices, occurs once = exterior)
-- [ ] 5.5 Implement outward winding orientation (normal away from opposite vertex)
-- [ ] 5.6 Cache extracted exterior faces; invalidate only on topology change
-- [ ] 5.7 Implement per-cell to per-triangle scalar field mapping via source cell back-reference
-- [ ] 5.8 Implement `ScalarFieldMaterial` with color map, value range, and out-of-range policy
-- [ ] 5.9 Implement `source_id` propagation from mesh triangle back to original cell
-- [ ] 5.10 Implement `MeshEdgeStyle` for optional triangle edge rendering
-- [ ] 5.11 Implement double-sided emission for translucent alpha materials
-- [ ] 5.12 Document mesh-size limit for pairwise overlap sorter; provide guidance on when to use average-depth
-- [ ] 5.13 Implement `update_object()` for vertex replacement (reuse topology cache)
-- [ ] 5.14 Implement `update_object()` for field/material replacement (reuse geometry cache)
-- [ ] 5.15 Write unit tests: face deduplication, exterior extraction, outward winding
-- [ ] 5.16 Write unit tests: per-cell scalar range handling, color mapping, source-ID preservation
-- [ ] 5.17 Write unit tests: degenerate and inverted tetrahedra handling
-- [ ] 5.18 Write integration test: tetrahedral fixture renders only exterior faces with correct colors and pickable source IDs
-- [ ] 5.19 Write integration test: no tetrahedron represented as individual scene object
-- [ ] 5.20 Create demo 15 with buildings using varied mesh-based roof shapes
+- [x] 5.1 Implement `TriangleMesh3D` with indexed vertices and triangular faces
+- [x] 5.2 Implement efficient packet emission (one retained renderable, not per-face objects)
+- [x] 5.3 Implement `TetrahedralMesh3D` with cell topology storage
+- [x] 5.4 Implement exterior-face extraction (face keyed by sorted vertex indices, occurs once = exterior)
+- [x] 5.5 Implement outward winding orientation (normal away from opposite vertex)
+- [x] 5.6 Cache extracted exterior faces; invalidate only on topology change
+- [x] 5.7 Implement per-cell to per-triangle scalar field mapping via source cell back-reference
+- [x] 5.8 Implement `ScalarFieldMaterial` with color map, value range, and out-of-range policy
+- [x] 5.9 Implement `source_id` propagation from mesh triangle back to original cell
+- [x] 5.10 Implement `MeshEdgeStyle` for optional triangle edge rendering
+- [x] 5.11 Implement double-sided emission for translucent alpha materials
+- [x] 5.12 Document mesh-size limit for pairwise overlap sorter; provide guidance on when to use average-depth
+- [x] 5.13 Implement `update_object()` for vertex replacement (reuse topology cache)
+- [x] 5.14 Implement `update_object()` for field/material replacement (reuse geometry cache)
+- [x] 5.15 Write unit tests: face deduplication, exterior extraction, outward winding
+- [x] 5.16 Write unit tests: per-cell scalar range handling, color mapping, source-ID preservation
+- [x] 5.17 Write unit tests: degenerate and inverted tetrahedra handling
+- [x] 5.18 Write integration test: tetrahedral fixture renders only exterior faces with correct colors and pickable source IDs
+- [x] 5.19 Write integration test: no tetrahedron represented as individual scene object
+- [x] 5.20 Create demo 15 with buildings using varied mesh-based roof shapes
 
 ## Milestone 5.5: Performance Profiling Fixtures
 - [ ] 5.5.1 Ensure each pipeline stage (projection/clipping, broad-phase, overlap tests, topological sort, DCG node creation) is a separate callable boundary
