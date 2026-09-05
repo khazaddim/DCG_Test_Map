@@ -190,10 +190,10 @@ class CpuRenderer3D:
         primary_entries = tuple(entry for entry in sorted_result.entries if not self._is_utility_underlay(entry))
         polygon_entries = tuple(entry for entry in primary_entries if entry.kind == "polygon")
         emitted_count = 1
-        for entry in background_entries:
-            emitted_count += self._emit_entry(context, target, entry, frame, ())
         for entry in underlay_entries:
             emitted_count += self._emit_entry(context, target, entry, frame, ())
+            for entry in background_entries:
+                emitted_count += self._emit_entry(context, target, entry, frame, ())
         for entry in utility_line_entries:
             emitted_count += self._emit_entry(context, target, entry, frame, ())
         for entry in primary_entries:

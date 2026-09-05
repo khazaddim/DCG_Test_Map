@@ -857,12 +857,15 @@ The render lifecycle is:
 4. Assign stable indices and collect projected entries.
 5. Order occludable entries with the configured `RenderSorter`.
 6. Emit DearCyGui draw items into the hidden back layer in ordered passes.
-  Underlay polygons such as ground or decorative bands render first, utility
-  lines render next, and primary world entries render last. An occludable
-  animation stream is created at its entry's exact position within the primary
-  world pass, not in a later overlay pass. World-line entries are split into
-  visible subsegments at polygon intersections so only the portions behind
-  nearer solid faces are suppressed.
+  Underlay polygons such as ground or decorative bands render first,
+  non-occludable preprojected background streams render immediately after
+  those underlays, utility lines render next, and primary world entries render
+  last. This is what lets demo 14's water shimmer sit on top of the river band
+  without promoting it into the main world pass. An occludable animation
+  stream is created at its entry's exact position within the primary world
+  pass, not in a later overlay pass. World-line entries are split into visible
+  subsegments at polygon intersections so only the portions behind nearer
+  solid faces are suppressed.
 7. Return diagnostics such as packet counts, clipped counts, and cycle state.
 
 When a textured entry fails `project_complete_quad()`, the renderer emits its
@@ -1096,8 +1099,10 @@ framework must model these as separate policies.
   is built directly in the back scene layer and published with that rendered
   scene. DearCyGui cycles its stored frames without CPU reprojection between
   invalidations. Any scene rebuild clears the old stream and creates a new
-  preprojected stream. Its position in the fixed ground/background pass is
-  deliberate; it does not enter the face occlusion graph.
+  preprojected stream. Its position is deliberate: it renders after decorative
+  underlay polygons such as the river band, but before utility lines and the
+  main world pass. That lets the shimmer read as surface detail on the water
+  without entering the face occlusion graph.
 3. **Preprojected occludable world animation: trees from demo 14.** The tree's
   camera-facing world quad first becomes a normal sortable render entry. Only
   after overlap ordering does the renderer create its `DrawStream` at the
@@ -1571,8 +1576,9 @@ Integration checks should cover:
   camera revision.
 - Persistent overlay streams survive scene-layer replacement and retain their
   animation phase while only the parent transform changes.
-- Non-occludable preprojected streams rebuild with the background pass and do
-  not enter face ordering.
+- Non-occludable preprojected streams rebuild with the underlay/background
+  passes, render after decorative underlay polygons, and do not enter face
+  ordering.
 - Occludable preprojected streams are emitted at their sorted depth position,
   remain viewport-clipped, and can appear both behind and in front of boxes.
 - Visual comparison at representative camera pitch, yaw, zoom, clipping, and

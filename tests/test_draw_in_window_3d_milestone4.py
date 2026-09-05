@@ -125,6 +125,13 @@ def test_persistent_overlay_stream_survives_camera_change_without_rebuild() -> N
 def test_preprojected_background_stream_rebuilds_after_camera_change() -> None:
     scene = Scene3D()
     scene.add(
+        Polygon3D(
+            points=((-120.0, -120.0, 0.0), (120.0, -120.0, 0.0), (120.0, 120.0, 0.0), (-120.0, 120.0, 0.0)),
+            material=SolidMaterial(fill=(42, 66, 47), outline=None, thickness=-1.0, shaded=False, line_occluder=False),
+            cull_back_face=False,
+        )
+    )
+    scene.add(
         DrawStream3D(
             projection_policy=AnimationProjection.PREPROJECTED_BACKGROUND,
             frame_count=2,
@@ -143,6 +150,40 @@ def test_preprojected_background_stream_rebuilds_after_camera_change() -> None:
     second_stream = first_child_named(viewport.displayed_layer, "DrawStream")
 
     assert second_stream is not first_stream
+
+
+def test_preprojected_background_stream_renders_after_underlay_polygon() -> None:
+    scene = Scene3D()
+    scene.add(
+        Polygon3D(
+            points=((-120.0, -120.0, 0.0), (120.0, -120.0, 0.0), (120.0, 120.0, 0.0), (-120.0, 120.0, 0.0)),
+            material=SolidMaterial(fill=(42, 66, 47), outline=None, thickness=-1.0, shaded=False, line_occluder=False),
+            cull_back_face=False,
+        )
+    )
+    scene.add(
+        DrawStream3D(
+            projection_policy=AnimationProjection.PREPROJECTED_BACKGROUND,
+            frame_count=2,
+            loop_seconds=1.0,
+            frame_builder=noop_frame_builder,
+        )
+    )
+    scene.add(
+        Polygon3D(
+            points=((-80.0, -80.0, 10.0), (80.0, -80.0, 10.0), (80.0, 80.0, 10.0), (-80.0, 80.0, 10.0)),
+            material=SolidMaterial(fill=(120, 100, 80), outline=None, thickness=-1.0, shaded=False, line_occluder=True),
+            cull_back_face=False,
+        )
+    )
+    camera = Camera3D(target=(0.0, 0.0, 0.0), yaw_deg=0.0, pitch_deg=35.0, zoom=1.0, near_plane=1.0)
+    _context, viewport = build_widget(scene, camera)
+
+    viewport.render_now()
+
+    child_types = [type(child).__name__ for child in viewport.displayed_layer.children]
+
+    assert child_types == ["DrawRect", "DrawPolygon", "DrawStream", "DrawPolygon"]
 
 
 def test_occludable_billboard_emits_viewport_clipped_draw_stream() -> None:
