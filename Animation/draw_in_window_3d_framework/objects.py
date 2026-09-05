@@ -11,6 +11,7 @@ from .scene import (
     BillboardFacing,
     FrameContext,
     ImageMaterial,
+    LineRenderLayer,
     Material3D,
     SolidMaterial,
     StreamFrameBuilder,
@@ -72,6 +73,7 @@ class Line3D:
     end: Vec3
     color: tuple[int, int, int] | tuple[int, int, int, int] | int
     thickness: float = -1.0
+    render_layer: LineRenderLayer = LineRenderLayer.WORLD
     visible: bool = True
 
     def collect(self, frame: FrameContext) -> Iterable[WorldRenderPacket]:
@@ -79,6 +81,7 @@ class Line3D:
             kind="line",
             points=(self.start, self.end),
             material=SolidMaterial(fill=None, outline=self.color, thickness=self.thickness, shaded=False),
+            line_render_layer=self.render_layer,
         )
 
 
@@ -88,6 +91,7 @@ class Polyline3D:
     color: tuple[int, int, int] | tuple[int, int, int, int] | int
     thickness: float = -1.0
     closed: bool = False
+    render_layer: LineRenderLayer = LineRenderLayer.WORLD
     visible: bool = True
 
     def collect(self, frame: FrameContext) -> Iterable[WorldRenderPacket]:
@@ -99,6 +103,7 @@ class Polyline3D:
                 kind="line",
                 points=(self.points[index], self.points[(index + 1) % len(self.points)]),
                 material=SolidMaterial(fill=None, outline=self.color, thickness=self.thickness, shaded=False),
+                line_render_layer=self.render_layer,
             )
 
 
@@ -221,6 +226,7 @@ class Billboard3D:
             image_clip_to_viewport=animation_projection is AnimationProjection.OCCLUDABLE_WORLD,
             cache_key=self,
             world_size=self.world_size,
+            billboard=True,
         )
 
 

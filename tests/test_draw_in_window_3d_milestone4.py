@@ -16,7 +16,10 @@ from Animation.draw_in_window_3d_framework import (
     DrawStream3D,
     FrameContext,
     ImageMaterial,
+    Line3D,
+    LineRenderLayer,
     ProjectionPipeline,
+    Polygon3D,
     Scene3D,
     SolidMaterial,
     Viewport,
@@ -210,8 +213,6 @@ def test_billboard_still_sorts_as_polygon_but_does_not_occlude_lines() -> None:
     assert billboard_entry.line_occluder is False
     assert any(entry.kind == "polygon" and isinstance(entry.material, SolidMaterial) for entry in entries)
 
-    from Animation.draw_in_window_3d_framework import Line3D
-
     line_packet = next(iter(Line3D(start=(-100.0, 0.0, 30.0), end=(100.0, 0.0, 30.0), color=(255, 255, 0)).collect(frame)))
     projected_line = renderer._project_packet(line_packet, 999, frame, pipeline)
     assert projected_line is not None
@@ -220,6 +221,55 @@ def test_billboard_still_sorts_as_polygon_but_does_not_occlude_lines() -> None:
     visible_segments = renderer._visible_line_segments(projected_line, polygon_entries, frame)
 
     assert len(visible_segments) == 1
+
+
+def test_utility_grid_line_renders_between_underlay_and_billboard() -> None:
+    context = dcg.Context()
+    scene = Scene3D()
+    scene.add(
+        Polygon3D(
+            points=((-120.0, -120.0, 0.0), (120.0, -120.0, 0.0), (120.0, 120.0, 0.0), (-120.0, 120.0, 0.0)),
+            material=SolidMaterial(fill=(42, 66, 47), outline=None, thickness=-1.0, shaded=False, line_occluder=False),
+            cull_back_face=False,
+        )
+    )
+    scene.add(
+        Line3D(
+            start=(-120.0, 0.0, 1.0),
+            end=(120.0, 0.0, 1.0),
+            color=(255, 255, 0),
+            render_layer=LineRenderLayer.UTILITY,
+        )
+    )
+    scene.add(
+        Billboard3D(
+            anchor=(0.0, 0.0, 0.0),
+            world_size=(120.0, 180.0),
+            material=AnimatedImageMaterial(
+                frames=make_tree_frames(context),
+                loop_seconds=1.0,
+                tessellation=1,
+                projection_policy=AnimationProjection.OCCLUDABLE_WORLD,
+            ),
+        )
+    )
+    camera = Camera3D(target=(0.0, 0.0, 0.0), yaw_deg=0.0, pitch_deg=35.0, zoom=1.0, near_plane=1.0)
+    with dcg.Window(context, label="utility-line-order", width=440, height=320):
+        with DrawInWindow3D(
+            context,
+            width=280,
+            height=180,
+            scene=scene,
+            camera=camera,
+        ) as viewport:
+            pass
+
+    viewport.render_now()
+
+    child_types = [type(child).__name__ for child in viewport.displayed_layer.children]
+
+    assert child_types.index("DrawPolygon") < child_types.index("DrawLine")
+    assert child_types.index("DrawLine") < child_types.index("DrawingClip")
 
 
 def test_demo_14_scene_contains_textured_player_water_overlay_and_billboards() -> None:

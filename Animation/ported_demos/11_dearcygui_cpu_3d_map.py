@@ -19,6 +19,7 @@ from Animation.draw_in_window_3d_framework import (
     DrawInWindow3D,
     EdgeBandFollowController,
     GroundPlane3D,
+    LineRenderLayer,
     Line3D,
     Polygon3D,
     Polyline3D,
@@ -51,14 +52,14 @@ def build_scene() -> tuple[Scene3D, Box3D]:
         GroundPlane3D(
             bounds=(-GROUND_PAD, -GROUND_PAD, WORLD_W + GROUND_PAD, WORLD_H + GROUND_PAD),
             z=0.0,
-            material=SolidMaterial(fill=(42, 66, 47), outline=None, thickness=-1.0, shaded=False),
+            material=SolidMaterial(fill=(42, 66, 47), outline=None, thickness=-1.0, shaded=False, line_occluder=False),
         )
     )
     # Horizontal blue band across the map.
     scene.add(
         Polygon3D(
             points=((0.0, 620.0, 1.0), (WORLD_W, 620.0, 1.0), (WORLD_W, 710.0, 1.0), (0.0, 710.0, 1.0)),
-            material=SolidMaterial(fill=(68, 116, 168), outline=None, thickness=-1.0, shaded=False, line_occluder=False),
+            material=SolidMaterial(fill=(68, 116, 168), outline=None, thickness=-1.0, shaded=False, line_occluder=True),
             cull_back_face=False,
         )
     )
@@ -66,7 +67,7 @@ def build_scene() -> tuple[Scene3D, Box3D]:
     scene.add(
         Polygon3D(
             points=((910.0, 0.0, 2.0), (995.0, 0.0, 2.0), (995.0, WORLD_H, 2.0), (910.0, WORLD_H, 2.0)),
-            material=SolidMaterial(fill=(130, 116, 91), outline=None, thickness=-1.0, shaded=False, line_occluder=False),
+            material=SolidMaterial(fill=(130, 116, 91), outline=None, thickness=-1.0, shaded=False, line_occluder=True),
             cull_back_face=False,
         )
     )
@@ -79,6 +80,7 @@ def build_scene() -> tuple[Scene3D, Box3D]:
                 end=(float(grid_x), WORLD_H, GRID_LINE_Z),
                 color=(65, 91, 68),
                 thickness=-1.0,
+                render_layer=LineRenderLayer.UTILITY,
             )
         )
     for grid_y in range(0, int(WORLD_H) + 1, 100):
@@ -89,6 +91,7 @@ def build_scene() -> tuple[Scene3D, Box3D]:
                 end=(WORLD_W, float(grid_y), GRID_LINE_Z),
                 color=(65, 91, 68),
                 thickness=-1.0,
+                render_layer=LineRenderLayer.UTILITY,
             )
         )
 
@@ -99,6 +102,7 @@ def build_scene() -> tuple[Scene3D, Box3D]:
             color=(235, 214, 116),
             thickness=-3.0,
             closed=True,
+            render_layer=LineRenderLayer.UTILITY,
         )
     )
 

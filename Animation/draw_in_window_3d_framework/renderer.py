@@ -12,6 +12,7 @@ from .scene import (
     AnimationProjection,
     FrameContext,
     ImageMaterial,
+    LineRenderLayer,
     OverlapDepthSorter,
     ProjectedRenderEntry,
     ray_plane_depth,
@@ -166,6 +167,7 @@ class CpuRenderer3D:
         overlay_entries: list[ProjectedRenderEntry] = []
         background_entries: list[ProjectedRenderEntry] = []
         projected_entries: list[ProjectedRenderEntry] = []
+        utility_line_entries: list[ProjectedRenderEntry] = []
         for stable_index, packet in enumerate(packets):
             entry = self._project_packet(packet, stable_index, frame, pipeline)
             if entry is None:
@@ -178,14 +180,23 @@ class CpuRenderer3D:
                 if entry.animation_projection is AnimationProjection.PREPROJECTED_BACKGROUND:
                     background_entries.append(entry)
                     continue
+            if entry.kind == "line" and entry.line_render_layer is LineRenderLayer.UTILITY:
+                utility_line_entries.append(entry)
+                continue
             projected_entries.append(entry)
 
         sorted_result = self.sorter.sort(projected_entries, frame)
+        underlay_entries = tuple(entry for entry in sorted_result.entries if self._is_utility_underlay(entry))
+        primary_entries = tuple(entry for entry in sorted_result.entries if not self._is_utility_underlay(entry))
+        polygon_entries = tuple(entry for entry in primary_entries if entry.kind == "polygon")
         emitted_count = 1
         for entry in background_entries:
             emitted_count += self._emit_entry(context, target, entry, frame, ())
-        polygon_entries = tuple(entry for entry in sorted_result.entries if entry.kind == "polygon")
-        for entry in sorted_result.entries:
+        for entry in underlay_entries:
+            emitted_count += self._emit_entry(context, target, entry, frame, ())
+        for entry in utility_line_entries:
+            emitted_count += self._emit_entry(context, target, entry, frame, ())
+        for entry in primary_entries:
             emitted_count += self._emit_entry(context, target, entry, frame, polygon_entries)
         if persistent_overlay_target is not None:
             self._sync_persistent_overlays(context, persistent_overlay_target, overlay_entries, frame)
@@ -327,10 +338,12 @@ class CpuRenderer3D:
                 ),
                 material=material,
                 animation_projection=packet.animation_projection,
+                line_render_layer=packet.line_render_layer,
                 line_occluder=self._resolve_line_occluder(packet, material),
                 image_points=image_points,
                 image_clip_to_viewport=packet.image_clip_to_viewport,
                 cache_key=packet.cache_key,
+                billboard=packet.billboard,
             )
 
         if packet.kind == "line":
@@ -346,6 +359,7 @@ class CpuRenderer3D:
                 points=(projected.p0, projected.p1),
                 camera_points=projected.camera_points,
                 material=packet.material,
+                line_render_layer=packet.line_render_layer,
                 line_occluder=False,
             )
 
@@ -368,6 +382,7 @@ class CpuRenderer3D:
                 stable_index=stable_index,
                 average_depth=camera_point[2],
                 points=(screen,),
+                line_render_layer=packet.line_render_layer,
                 line_occluder=False,
                 text=packet.text,
                 text_size=text_size,
@@ -436,6 +451,13 @@ class CpuRenderer3D:
         if material is not None:
             return material.line_occluder
         return packet.kind == "polygon"
+
+    def _is_utility_underlay(self, entry: ProjectedRenderEntry) -> bool:
+        return (
+            entry.kind == "polygon"
+            and not entry.billboard
+            and not entry.line_occluder
+        )
 
     def _emit_entry(
         self,

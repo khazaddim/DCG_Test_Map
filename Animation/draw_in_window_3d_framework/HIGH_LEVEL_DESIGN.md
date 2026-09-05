@@ -248,7 +248,8 @@ Initial object types should be:
 
 - `Box3D`: emits back-face-culled polygon packets for six axis-aligned faces.
 - `Polygon3D`: emits a solid or textured planar polygon.
-- `Line3D` and `Polyline3D`: grid, border, and debug geometry.
+- `Line3D` and `Polyline3D`: grid, border, debug, and utility geometry, with
+  an explicit render-layer policy.
 - `Text3D`: projected labels with perspective-scaled size.
 - `Billboard3D`: emits a camera-facing quad and an image or animation command.
 - `GroundPlane3D`: convenience object for large clipped ground polygons.
@@ -306,6 +307,7 @@ grid_line = scene.add(Line3D(
   end=(400.0, 1200.0, 3.0),
   color=(65, 91, 68),
   thickness=1.0,
+  render_layer=LineRenderLayer.UTILITY,
 ))
 
 boundary = scene.add(Polyline3D(
@@ -324,7 +326,17 @@ boundary = scene.add(Polyline3D(
 label = scene.add(Text3D(
   name="storehouse-label",
   position=(820.0, 1080.0, 4.0),
+  render_layer=LineRenderLayer.UTILITY,
   text="Storehouse",
+
+measurement_ray = scene.add(Line3D(
+  name="range-check",
+  start=(820.0, 980.0, 90.0),
+  end=(1110.0, 980.0, 90.0),
+  color=(255, 180, 80),
+  thickness=2.0,
+  render_layer=LineRenderLayer.WORLD,
+))
   world_size=28.0,
   color=(235, 235, 220),
   min_screen_size=8.0,
@@ -761,28 +773,51 @@ the sampled subsegment is behind a nearer polygon face, that interval is
 suppressed; otherwise the subsegment is emitted as a normal DearCyGui line.
 
 That line-depth pass now treats polygon ordering and polygon line-occlusion as
-related but separate decisions. Solid faces continue to occlude lines by
+related but separate decisions. Solid faces continue to occlude world lines by
 default, but a polygon packet can override that policy directly and
 `SolidMaterial` also carries a `line_occluder` role. The renderer resolves the
 effective policy during projection, stores it on the projected polygon entry,
 and uses it only for the later line-fragment depth test. This keeps decorative
 surfaces such as demo 11's road and water bands in normal back-to-front polygon
-ordering while preventing them from punching holes in grid or border linework.
+ordering while preventing them from punching holes in linework.
 
-Current milestone-4 behavior makes the same distinction for demo 14 tree
-billboards. Their quads still participate in polygon depth ordering against
-boxes and other world faces, but they are presently marked as non-occluding for
-the line-fragment pass. This is an intentional design step back toward the
-original demo 14 look and interaction profile: trees may sort correctly in the
-world while grid and border lines can still show through them rather than being
-split aggressively.
+Milestone 4 adds one more distinction: not every line is a first-class world
+line. `Line3D` and `Polyline3D` now expose a `LineRenderLayer` policy.
 
-This is not the final design claim for billboards. The team should revisit this
-after milestone 4 if a compromise is needed between visual parity, line-legible
-map overlays, and a stronger hidden-line interpretation around billboard
-silhouettes. Any revisit should evaluate both appearance and input/render cost,
-since excluding billboards from the line-occlusion candidate set also reduced
-the responsiveness problems observed during the first framework demo-14 port.
+- `LineRenderLayer.WORLD` keeps the existing hidden-line behavior. The line is
+  projected, split against occluding polygons, and emitted in the normal world
+  pass. Use this for geometry whose relationship to walls, boxes, and other
+  solid faces matters.
+- `LineRenderLayer.UTILITY` deliberately demotes the line. Utility lines are
+  emitted after terrain-like underlay polygons but before the main world pass.
+  They are not split against billboards or buildings, and they are expected to
+  lose visually to later world primitives.
+
+This policy is the current answer to demo 14's tree problem. Tree billboards
+remain ordinary world primitives: their quads still participate in polygon
+depth ordering against boxes and other world faces, so a wall can hide a tree
+and a tree can still sort against the player. The floor grid and world border,
+however, are no longer treated as peers of those billboard quads. They are
+utility lines whose job is orientation and measurement, not authoritative world
+occlusion.
+
+The practical consequence is straightforward:
+
+- If a tree billboard is emitted after a utility grid line, opaque tree texels
+  cover the line and transparent texels still reveal it. This matches the
+  desired demo 14 result.
+- If a building polygon is emitted after that same utility line, the building
+  simply covers the line. There is no attempt to preserve "line in front of
+  wall" semantics for this layer.
+- If a future measurement ray, targeting beam, or selection outline needs to
+  participate in hidden-line logic, it should stay on `LineRenderLayer.WORLD`
+  rather than being placed on the utility layer.
+
+This is a pragmatic design statement, not an accidental compromise: polygons,
+billboards, and projected images are the primary world primitives; utility
+lines are a lower-priority annotation layer. That matches the current DND-style
+use case where the floor grid is important for play but less important than the
+visual correctness of buildings, sprites, and textured faces.
 
 This is a pragmatic milestone choice, not a full hidden-line system. Midpoint
 sampling is sufficient here because the split points already isolate changes in
@@ -821,9 +856,11 @@ The render lifecycle is:
 3. Cull and project each packet through `ProjectionPipeline`.
 4. Assign stable indices and collect projected entries.
 5. Order occludable entries with the configured `RenderSorter`.
-6. Emit DearCyGui draw items into the hidden back layer in sorted order. An
-  occludable animation stream is created at its entry's exact position in
-  this sequence, not in a later overlay pass. Line entries are split into
+6. Emit DearCyGui draw items into the hidden back layer in ordered passes.
+  Underlay polygons such as ground or decorative bands render first, utility
+  lines render next, and primary world entries render last. An occludable
+  animation stream is created at its entry's exact position within the primary
+  world pass, not in a later overlay pass. World-line entries are split into
   visible subsegments at polygon intersections so only the portions behind
   nearer solid faces are suppressed.
 7. Return diagnostics such as packet counts, clipped counts, and cycle state.
@@ -1068,11 +1105,11 @@ framework must model these as separate policies.
   bounds the stream to the viewport, allowing partially visible trees without
   placing unclipped image coordinates directly in the canvas. Scene rebuilds
   discard and recreate this stream for the current projection. In the current
-  milestone-4 implementation, these billboard quads do not also occlude grid or
-  border line fragments; they are sortable world entries, but they opt out of
-  the later line-occlusion pass to stay closer to the original demo 14 visual
-  result and to avoid the extra candidate work that made early framework
-  interactions feel sluggish.
+  milestone-4 implementation, the billboard remains in the primary world pass
+  and the grid is instead demoted to the utility-line pass. That means the tree
+  still sorts against boxes and other polygons, while the floor grid and border
+  intentionally lose to the billboard without requiring billboard-specific line
+  splitting.
 
 All three streams advance without calling `render_if_needed()`. Camera target,
 yaw, pitch, zoom, viewport, or relevant object-geometry changes invalidate

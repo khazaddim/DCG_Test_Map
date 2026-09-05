@@ -19,6 +19,11 @@ class AnimationProjection(Enum):
     OCCLUDABLE_WORLD = "occludable_world"
 
 
+class LineRenderLayer(Enum):
+    WORLD = "world"
+    UTILITY = "utility"
+
+
 class BillboardFacing(Enum):
     CAMERA_YAW = "camera_yaw"
 
@@ -116,6 +121,7 @@ class WorldRenderPacket:
     points: tuple[Vec3, ...]
     material: Material3D | None = None
     animation_projection: AnimationProjection | None = None
+    line_render_layer: LineRenderLayer = LineRenderLayer.WORLD
     line_occluder: bool | None = None
     normal: Vec3 | None = None
     cull_back_face: bool = False
@@ -130,6 +136,7 @@ class WorldRenderPacket:
     stream_frame_builder: StreamFrameBuilder | None = None
     cache_key: object | None = None
     world_size: tuple[float, float] | None = None
+    billboard: bool = False
 
 
 @dataclass(frozen=True)
@@ -141,6 +148,7 @@ class ProjectedRenderEntry:
     camera_points: tuple[Vec3, ...] = ()
     material: Material3D | None = None
     animation_projection: AnimationProjection | None = None
+    line_render_layer: LineRenderLayer = LineRenderLayer.WORLD
     line_occluder: bool = True
     image_points: tuple[Vec2, ...] = ()
     image_clip_to_viewport: bool = False
@@ -154,6 +162,7 @@ class ProjectedRenderEntry:
     overlay_origin: Vec2 | None = None
     overlay_scale: tuple[float, float] = (1.0, 1.0)
     visible: bool = True
+    billboard: bool = False
 
 
 @dataclass(frozen=True)
