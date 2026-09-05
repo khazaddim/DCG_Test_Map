@@ -98,6 +98,7 @@ def test_widget_render_now_publishes_layer_and_coalesces_dirty_flag() -> None:
     assert viewport.last_render_revision == 1
     assert viewport.displayed_layer.show is True
     assert viewport.back_layer.show is False
+    assert len(viewport.back_layer.children) == 0
     assert len(viewport.displayed_layer.children) == stats.emitted_count
     assert type(viewport.displayed_layer.children[0]).__name__ == "DrawRect"
     assert viewport.render_if_needed() is None

@@ -477,15 +477,54 @@ class CpuRenderer3D:
             fill = entry.material.fill if entry.material is not None else None
             outline = entry.material.outline if entry.material is not None else 0
             thickness = entry.material.thickness if entry.material is not None else -1
-            dcg.DrawPolygon(
-                context,
-                parent=target,
-                points=entry.points,
-                fill=fill,
-                color=outline if outline is not None else 0,
-                thickness=thickness,
-            )
-            return 1
+            emitted = 0
+            if fill is not None and len(entry.points) == 3:
+                dcg.DrawTriangle(
+                    context,
+                    parent=target,
+                    p1=entry.points[0],
+                    p2=entry.points[1],
+                    p3=entry.points[2],
+                    fill=fill,
+                    color=0,
+                    thickness=thickness,
+                )
+                emitted += 1
+            elif fill is not None and len(entry.points) == 4:
+                dcg.DrawQuad(
+                    context,
+                    parent=target,
+                    p1=entry.points[0],
+                    p2=entry.points[1],
+                    p3=entry.points[2],
+                    p4=entry.points[3],
+                    fill=fill,
+                    color=0,
+                    thickness=thickness,
+                )
+                emitted += 1
+            elif fill is not None:
+                dcg.DrawPolygon(
+                    context,
+                    parent=target,
+                    points=entry.points,
+                    fill=fill,
+                    color=0,
+                    thickness=thickness,
+                )
+                emitted += 1
+            if outline is not None and outline != 0:
+                for index, start in enumerate(entry.points):
+                    dcg.DrawLine(
+                        context,
+                        parent=target,
+                        p1=start,
+                        p2=entry.points[(index + 1) % len(entry.points)],
+                        color=outline,
+                        thickness=thickness,
+                    )
+                    emitted += 1
+            return emitted
 
         if entry.kind == "stream":
             return self._emit_stream(context, target, entry, frame)

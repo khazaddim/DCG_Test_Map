@@ -85,9 +85,13 @@ class TriangleMesh3D:
 
     def collect(self, frame: FrameContext) -> Iterable[WorldRenderPacket]:
         del frame
+        emitted_edges: set[tuple[int, int]] = set()
         for triangle_index, triangle in enumerate(self.triangles):
             source_id = self.source_ids[triangle_index] if self.source_ids else triangle_index
-            yield from self._collect_triangle(MeshTriangle(triangle, source_id))
+            packets = tuple(self._collect_triangle(MeshTriangle(triangle, source_id)))
+            yield from packets
+            if self.edges is not None and packets:
+                yield from self._collect_new_edges(triangle, source_id, emitted_edges)
 
     def update_object(self, **changes: object) -> None:
         for name, value in changes.items():
@@ -134,10 +138,12 @@ class TriangleMesh3D:
                 cull_back_face=False,
                 source_id=triangle.source_id,
             )
-        if self.edges is not None:
-            yield from self._collect_edges(points, triangle.source_id)
-
-    def _collect_edges(self, points: tuple[Vec3, Vec3, Vec3], source_id: int) -> Iterable[WorldRenderPacket]:
+    def _collect_new_edges(
+        self,
+        triangle: tuple[int, int, int],
+        source_id: int,
+        emitted_edges: set[tuple[int, int]],
+    ) -> Iterable[WorldRenderPacket]:
         assert self.edges is not None
         material = SolidMaterial(
             fill=None,
@@ -146,10 +152,18 @@ class TriangleMesh3D:
             shaded=False,
             line_occluder=False,
         )
-        for start_index, end_index in ((0, 1), (1, 2), (2, 0)):
+        for start_index, end_index in (
+            (triangle[0], triangle[1]),
+            (triangle[1], triangle[2]),
+            (triangle[2], triangle[0]),
+        ):
+            edge_key = tuple(sorted((start_index, end_index)))
+            if edge_key in emitted_edges:
+                continue
+            emitted_edges.add(edge_key)
             yield WorldRenderPacket(
                 kind="line",
-                points=(points[start_index], points[end_index]),
+                points=(self.vertices[start_index], self.vertices[end_index]),
                 material=material,
                 line_render_layer=self.edges.render_layer,
                 line_occluder=False,

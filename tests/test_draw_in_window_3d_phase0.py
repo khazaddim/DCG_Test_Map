@@ -57,4 +57,4 @@ def test_replace_polygon_swaps_visible_and_hidden_layers():
     assert viewport.displayed_layer.show is True
     assert viewport.back_layer.show is False
     assert len(viewport.displayed_layer.children) == 1
-    assert len(viewport.back_layer.children) == 1
+    assert len(viewport.back_layer.children) == 0

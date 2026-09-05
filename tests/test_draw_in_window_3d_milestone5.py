@@ -7,6 +7,7 @@ import sys
 import dearcygui as dcg
 
 from Animation.draw_in_window_3d_framework import (
+    Box3D,
     Camera3D,
     CpuRenderer3D,
     FieldAssociation,
@@ -196,6 +197,24 @@ def test_mesh_edges_emit_optional_line_packets() -> None:
     assert [packet.kind for packet in packets].count("line") == 3
 
 
+def test_mesh_edges_emit_shared_indexed_edge_once() -> None:
+    mesh = TriangleMesh3D(
+        vertices=((0.0, 0.0, 0.0), (1.0, 0.0, 0.0), (0.0, 1.0, 0.0), (1.0, 1.0, 0.0)),
+        triangles=((0, 1, 2), (1, 3, 2)),
+        material=SolidMaterial(fill=(120, 140, 160)),
+        edges=MeshEdgeStyle(color=(10, 20, 30, 155), thickness=-1.0),
+    )
+
+    line_packets = [packet for packet in mesh.collect(make_frame()) if packet.kind == "line"]
+    edge_keys = {
+        frozenset(packet.points)
+        for packet in line_packets
+    }
+
+    assert len(line_packets) == 5
+    assert len(edge_keys) == 5
+
+
 def test_translucent_mesh_material_emits_double_sided_triangles() -> None:
     mesh = TriangleMesh3D(
         vertices=((0.0, 0.0, 0.0), (1.0, 0.0, 0.0), (0.0, 1.0, 0.0)),
@@ -249,7 +268,7 @@ def test_scene_update_object_replaces_mesh_fields_without_adding_scene_objects()
     assert mesh.material.fill == (200, 80, 60)
 
 
-def test_mesh_render_creates_draw_polygons_from_one_retained_scene_object() -> None:
+def test_mesh_render_creates_draw_triangles_from_one_retained_scene_object() -> None:
     context = dcg.Context()
     layer = dcg.DrawingList(context)
     scene = Scene3D()
@@ -267,14 +286,46 @@ def test_mesh_render_creates_draw_polygons_from_one_retained_scene_object() -> N
 
     assert scene.object_count == 1
     assert stats.packet_count == 2
-    assert [type(child).__name__ for child in layer.children].count("DrawPolygon") == 2
+    assert [type(child).__name__ for child in layer.children].count("DrawTriangle") == 2
+
+
+def test_triangle_outline_uses_independent_line_primitives() -> None:
+    context = dcg.Context()
+    layer = dcg.DrawingList(context)
+    scene = Scene3D()
+    scene.add(
+        TriangleMesh3D(
+            vertices=((0.0, 0.0, 0.0), (20.0, 0.0, 0.0), (10.0, 0.01, 0.0)),
+            triangles=((0, 1, 2),),
+            material=SolidMaterial(fill=(120, 140, 160), outline=(10, 20, 30)),
+            cull_back_faces=False,
+        )
+    )
+    frame = make_frame()
+
+    stats = CpuRenderer3D().render(context, layer, scene, frame.camera, frame.viewport)
+
+    assert [type(child).__name__ for child in layer.children] == [
+        "DrawRect",
+        "DrawTriangle",
+        "DrawLine",
+        "DrawLine",
+        "DrawLine",
+    ]
+    assert stats.emitted_count == 5
 
 
 def test_demo_15_builds_varied_mesh_roofs() -> None:
     demo = load_demo_15()
     scene = demo.build_scene()
     roof_meshes = [item for item in scene.iter_visible() if isinstance(item, TriangleMesh3D) and item.edges is not None]
+    building_top_z = {
+        item.center[2] + item.size[2]
+        for item in scene.iter_visible()
+        if isinstance(item, Box3D)
+    }
     triangle_counts = {len(mesh.triangles) for mesh in roof_meshes}
 
     assert len(roof_meshes) == 5
     assert len(triangle_counts) >= 3
+    assert all(min(vertex[2] for vertex in mesh.vertices) in building_top_z for mesh in roof_meshes)

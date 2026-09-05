@@ -118,8 +118,8 @@ def add_shed_roof(scene: Scene3D, center: tuple[float, float], size: tuple[float
     y0 = center[1] - depth * 0.5
     y1 = center[1] + depth * 0.5
     vertices = (
-        (x0, y0, base_z + 18.0), (x1, y0, base_z + 18.0),
-        (x1, y1, base_z + 72.0), (x0, y1, base_z + 72.0),
+        (x0, y0, base_z), (x1, y0, base_z),
+        (x1, y1, base_z + 54.0), (x0, y1, base_z + 54.0),
     )
     scene.add(
         TriangleMesh3D(

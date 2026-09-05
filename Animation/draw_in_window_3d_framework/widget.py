@@ -52,6 +52,7 @@ class FramePublisher:
                 self.back_layer,
                 self.displayed_layer,
             )
+            clear_drawing_list(self.back_layer)
         self.published_revision += 1
         return self.published_revision
 

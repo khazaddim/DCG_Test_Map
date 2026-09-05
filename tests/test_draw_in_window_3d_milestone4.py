@@ -183,7 +183,7 @@ def test_preprojected_background_stream_renders_after_underlay_polygon() -> None
 
     child_types = [type(child).__name__ for child in viewport.displayed_layer.children]
 
-    assert child_types == ["DrawRect", "DrawPolygon", "DrawStream", "DrawPolygon"]
+    assert child_types == ["DrawRect", "DrawPolygon", "DrawStream", "DrawQuad"]
 
 
 def test_occludable_billboard_emits_viewport_clipped_draw_stream() -> None:
