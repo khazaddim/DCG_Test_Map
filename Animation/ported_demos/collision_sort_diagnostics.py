@@ -65,6 +65,7 @@ def build_collision_world(scene, player: Box3D) -> CollisionWorld:
     collisions = CollisionWorld(gap=COLLISION_GAP)
     building_index = 1
     for item in scene.iter_visible():
+        # Reuse the visible building boxes as the diagnostic collision footprint set.
         if isinstance(item, Box3D) and item is not player:
             collisions.add(f"building {building_index}", footprint_for(item))
             building_index += 1
@@ -161,6 +162,7 @@ def build_ui(context: dcg.Context) -> ConfigurableCollisionSortController:
         pitch_deg=52.0,
         zoom=0.72,
     )
+    # Swap sorters on the same scene to compare ordering behavior without changing world content.
     renderer = CpuRenderer3D(sorter=build_sorter("overlap"))
 
     with dcg.Window(
@@ -191,6 +193,7 @@ def build_ui(context: dcg.Context) -> ConfigurableCollisionSortController:
             dcg.DrawRect(context, parent=viewport, pmin=(0, demo.VIEW_H - demo.EDGE_BAND_Y), pmax=(demo.VIEW_W, demo.VIEW_H), fill=band_color, color=0, thickness=-1)
             dcg.DrawRect(context, parent=viewport, pmin=(0, demo.EDGE_BAND_Y), pmax=(demo.EDGE_BAND_X, demo.VIEW_H - demo.EDGE_BAND_Y), fill=band_color, color=0, thickness=-1)
             dcg.DrawRect(context, parent=viewport, pmin=(demo.VIEW_W - demo.EDGE_BAND_X, demo.EDGE_BAND_Y), pmax=(demo.VIEW_W, demo.VIEW_H - demo.EDGE_BAND_Y), fill=band_color, color=0, thickness=-1)
+            # Keep the familiar edge-band overlay so camera-follow behavior stays comparable to Demo 11.
             dcg.DrawRect(context, parent=viewport, pmin=(demo.EDGE_BAND_X, demo.EDGE_BAND_Y), pmax=(demo.VIEW_W - demo.EDGE_BAND_X, demo.VIEW_H - demo.EDGE_BAND_Y), color=(245, 205, 83, 115), thickness=-1)
             dcg.DrawRect(context, parent=viewport, pmin=(0, 0), pmax=(demo.VIEW_W, demo.VIEW_H), color=(112, 132, 155), thickness=-2)
 

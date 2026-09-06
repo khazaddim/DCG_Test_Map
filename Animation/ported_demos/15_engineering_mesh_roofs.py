@@ -37,6 +37,7 @@ EDGE_STYLE = MeshEdgeStyle(color=(34, 38, 40, 155), thickness=-1.0)
 
 
 def add_box_building(scene: Scene3D, center: tuple[float, float], size: tuple[float, float], height: float) -> float:
+    # Keep the wall mass rectangular and let the roof silhouette come from a separate mesh.
     scene.add(
         Box3D(
             center=(center[0], center[1], 0.0),
@@ -55,6 +56,7 @@ def add_gable_roof(scene: Scene3D, center: tuple[float, float], size: tuple[floa
     y1 = center[1] + depth * 0.5
     ridge_y = center[1]
     ridge_z = base_z + 64.0
+    # Two ridge points plus the wall corners give a minimal six-vertex gable roof.
     vertices = (
         (x0, y0, base_z), (x1, y0, base_z), (x1, y1, base_z), (x0, y1, base_z),
         (x0, ridge_y, ridge_z), (x1, ridge_y, ridge_z),
@@ -76,6 +78,7 @@ def add_hip_roof(scene: Scene3D, center: tuple[float, float], size: tuple[float,
     y0 = center[1] - depth * 0.5
     y1 = center[1] + depth * 0.5
     ridge_z = base_z + 58.0
+    # A shortened ridge makes the roof slope down on all four sides.
     vertices = (
         (x0, y0, base_z), (x1, y0, base_z), (x1, y1, base_z), (x0, y1, base_z),
         (center[0] - width * 0.22, center[1], ridge_z),
@@ -97,6 +100,7 @@ def add_pyramid_roof(scene: Scene3D, center: tuple[float, float], size: tuple[fl
     x1 = center[0] + width * 0.5
     y0 = center[1] - depth * 0.5
     y1 = center[1] + depth * 0.5
+    # One apex over the rectangle corners is the smallest pyramid roof pattern.
     vertices = (
         (x0, y0, base_z), (x1, y0, base_z), (x1, y1, base_z), (x0, y1, base_z),
         (center[0], center[1], base_z + 92.0),
@@ -117,6 +121,7 @@ def add_shed_roof(scene: Scene3D, center: tuple[float, float], size: tuple[float
     x1 = center[0] + width * 0.5
     y0 = center[1] - depth * 0.5
     y1 = center[1] + depth * 0.5
+    # Two raised back corners turn one quad into a single-slope shed roof.
     vertices = (
         (x0, y0, base_z), (x1, y0, base_z),
         (x1, y1, base_z + 54.0), (x0, y1, base_z + 54.0),
@@ -136,6 +141,7 @@ def build_scene() -> Scene3D:
     scene = Scene3D(background=(23, 29, 34))
     scene.add(GroundPlane3D(bounds=(0.0, 0.0, WORLD_W, WORLD_H), z=0.0, material=GROUND_MATERIAL))
     scene.add(
+        # A flat two-triangle strip is enough for roads that do not need curb geometry.
         TriangleMesh3D(
             vertices=((0.0, 360.0, 1.0), (WORLD_W, 360.0, 1.0), (WORLD_W, 500.0, 1.0), (0.0, 500.0, 1.0)),
             triangles=((0, 1, 2), (0, 2, 3)),
@@ -152,6 +158,7 @@ def build_scene() -> Scene3D:
         ((735.0, 585.0), (185.0, 185.0), 128.0, add_gable_roof),
     )
     for center, size, height, roof_builder in specs:
+        # This table-driven pair is the reusable settlement pattern: one wall box, one roof mesh.
         base_z = add_box_building(scene, center, size, height)
         roof_builder(scene, center, size, base_z)
     return scene

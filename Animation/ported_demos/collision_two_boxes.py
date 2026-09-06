@@ -136,6 +136,7 @@ class TwoBoxController:
 def build_ui(context: dcg.Context) -> TwoBoxController:
     scene = Scene3D(background=(28, 38, 48))
     texture = create_box_texture(context)
+    # Reuse one tessellated image material on selected faces when a box needs token-like detail.
     textured_faces = ImageMaterial(
         texture=texture,
         tessellation=TEXTURE_TESSELLATION,
@@ -155,6 +156,7 @@ def build_ui(context: dcg.Context) -> TwoBoxController:
         material=SolidMaterial(fill=(179, 93, 74)),
         face_materials=(None, textured_faces, textured_faces, None, None, None),
     )
+    # This pair is the smallest collision pattern: one fixed blocker box and one movable player box.
     player = Box3D(
         center=(120.0, 120.0, 0.0),
         size=(BOX_SIZE, BOX_SIZE, 100.0),
@@ -164,6 +166,7 @@ def build_ui(context: dcg.Context) -> TwoBoxController:
     scene.add(obstacle)
     scene.add(player)
     collisions = CollisionWorld(gap=COLLISION_GAP)
+    # Match the visible obstacle with one AABB footprint so movement logic stays easy to reason about.
     collisions.add("red box", footprint_for(obstacle))
     camera = Camera3D(
         target=(WORLD_WIDTH * 0.5, 120.0, 0.0),

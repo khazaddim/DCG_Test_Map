@@ -77,6 +77,7 @@ def build_collision_world(scene, player: Box3D) -> CollisionWorld:
     collisions = CollisionWorld(gap=COLLISION_GAP)
     building_index = 1
     for item in scene.iter_visible():
+        # Reuse every non-player Box3D footprint as the movement blocker set.
         if isinstance(item, Box3D) and item is not player:
             collisions.add(f"building {building_index}", footprint_for(item))
             building_index += 1

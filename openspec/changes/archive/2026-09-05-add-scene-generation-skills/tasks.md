@@ -18,7 +18,7 @@ Deliverables: repo-local documentation skills for all application-level scene-au
 
 Deliverables: demo-by-demo documentation that helps a smaller model find the right reference when making or editing a world, plus concise inline comments in demo code blocks that explain reusable scene-building patterns.
 
-- [ ] 3.1 Document each relevant demo or ported example with the classes, patterns, and world-building features it demonstrates
-- [ ] 3.2 Add navigation guidance that maps common world-creation or world-edit requests to the most relevant demos
-- [ ] 3.3 Add concise inline comments to important demo code blocks so reusable patterns such as roof builders, stacked box structures, or billboard usage remain understandable to smaller models later
-- [ ] 3.4 Call out major example gaps where a feature is plausible in the framework but not yet well represented in current demos
+- [x] 3.1 Document each relevant demo or ported example with the classes, patterns, and world-building features it demonstrates
+- [x] 3.2 Add navigation guidance that maps common world-creation or world-edit requests to the most relevant demos
+- [x] 3.3 Add concise inline comments to important demo code blocks so reusable patterns such as roof builders, stacked box structures, or billboard usage remain understandable to smaller models later
+- [x] 3.4 Call out major example gaps where a feature is plausible in the framework but not yet well represented in current demos

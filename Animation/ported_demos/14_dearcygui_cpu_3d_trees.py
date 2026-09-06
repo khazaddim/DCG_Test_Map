@@ -161,6 +161,7 @@ def build_water_frame(context: dcg.Context, parent: dcg.DrawingList, frame, fram
         (697.0, 118.0, 0.19),
     )
     for lane_index, (world_y, dash_length, lane_phase) in enumerate(lanes):
+        # Project short animated dashes into screen space to suggest a moving stream.
         offset = ((phase + lane_phase) % 1.0) * WATER_DASH_SPACING
         world_x = offset - WATER_DASH_SPACING
         while world_x < demo11.WORLD_W:
@@ -207,6 +208,7 @@ def build_scene(context: dcg.Context) -> tuple[Scene3D, Box3D, DrawStream3D]:
     marker_texture = create_star_sprite(context)
     tree_textures = create_tree_textures(context)
 
+    # Put a flat image on the player top face so the moving box reads like a token.
     player.face_materials = (
         None,
         None,
@@ -216,6 +218,7 @@ def build_scene(context: dcg.Context) -> tuple[Scene3D, Box3D, DrawStream3D]:
         None,
     )
 
+    # DrawStream3D plus ProjectionPipeline is the narrow animated-water pattern.
     scene.add(
         DrawStream3D(
             projection_policy=AnimationProjection.PREPROJECTED_BACKGROUND,
@@ -225,6 +228,7 @@ def build_scene(context: dcg.Context) -> tuple[Scene3D, Box3D, DrawStream3D]:
         )
     )
 
+    # Persistent overlay streams can follow a moving object without becoming solid geometry.
     marker = DrawStream3D(
         projection_policy=AnimationProjection.PERSISTENT_OVERLAY,
         frame_count=MARKER_FRAME_COUNT,
@@ -240,6 +244,7 @@ def build_scene(context: dcg.Context) -> tuple[Scene3D, Box3D, DrawStream3D]:
         ((1260.0, 650.0, 0.0), (185.0, 285.0), 4),
     )
     for anchor, world_size, frame_offset in trees:
+        # Billboard3D is the reusable tree-and-sign pattern for thin vertical props.
         scene.add(
             Billboard3D(
                 anchor=anchor,
