@@ -2,40 +2,23 @@
 
 Deliverables: documented capability boundaries, a selected intermediate recipe schema format, and a defined allowed vocabulary for primitives, materials, and archetypes.
 
-- [ ] 1.1 Finalize the capability boundaries for scene generation, surface art recipes, and example cataloging against the current framework object inventory
-- [ ] 1.2 Choose and document the intermediate schema format for scene recipes and facade-art recipes
-- [ ] 1.3 Define the allowed primitive, material, and archetype vocabulary that generated outputs may reference
+- [x] 1.1 Finalize the capability boundaries for scene generation, surface art recipes, and example cataloging against the current framework object inventory
+- [x] 1.2 Choose and document the intermediate schema format for scene recipes and facade-art recipes
+- [x] 1.3 Define the allowed primitive, material, and archetype vocabulary that generated outputs may reference
 
-## 2. Skill Authoring
+## 2. Class Documentation Skills
 
-Deliverables: repo-local skill files for scene generation and surface-art generation, plus explicit refusal guidance for unsupported renderer requests.
+Deliverables: repo-local documentation skills for all application-level scene-authoring classes, targeted documentation for supporting utilities used directly by demos 11, 14, and 15, in-code docstrings for public classes that currently lack them, plus usage guidance, key constraints, and nearby examples.
 
-- [ ] 2.1 Create repo-local skill instructions for constrained scene generation from high-level world briefs
-- [ ] 2.2 Create repo-local skill instructions for facade and billboard art recipe generation with placement metadata
-- [ ] 2.3 Add guidance that forces skills to reject requests requiring unsupported renderer capabilities
+- [ ] 2.1 Document each application-level class used for scene authoring in demos 11, 14, and 15, including purpose, key parameters, and when to prefer it over nearby alternatives
+- [ ] 2.2 Add class-local guidance on important limitations, unsupported assumptions, and safe fallback patterns for smaller models
+- [ ] 2.3 Link each class guide to the most relevant demos or examples that show it in practice, and add concise docstrings to the corresponding public classes where that guidance is currently missing
 
-## 3. Example and Asset Seed Data
+## 3. Demo Navigation Documentation
 
-Deliverables: an initial archetype catalog, seeded scene recipe fixtures, and a starter surface-art recipe library aligned to current framework patterns.
+Deliverables: demo-by-demo documentation that helps a smaller model find the right reference when making or editing a world, plus concise inline comments in demo code blocks that explain reusable scene-building patterns.
 
-- [ ] 3.1 Build an initial archetype catalog covering towns, hills, forests, castles, and roads using existing framework patterns
-- [ ] 3.2 Create example recipe fixtures derived from current ported demos and at least one fantasy-scene composition per archetype family
-- [ ] 3.3 Define a starter surface-art recipe library for doors, windows, brick, stone, timber, banners, and roof treatments
-
-## 4. Validation and Workflow
-
-Deliverables: recipe/schema validation checks, workflow documentation from brief to scene output, and a lightweight-model review record with follow-on gaps captured separately.
-
-- [ ] 4.1 Add validation checks or focused tests for recipe/schema conformance and supported primitive usage
-- [ ] 4.2 Add documentation showing how to go from a world brief to a recipe, from a recipe to an example scene, and from a surface-art recipe to framework material usage
-- [ ] 4.3 Review the seeded examples with a lightweight-model-oriented workflow and capture gaps as follow-on changes instead of expanding framework scope implicitly
-
-## 5. Terrain-Dependent Scene Expansion
-
-Deliverables: a gated late-phase terrain extension covering terrain-aware schema additions, hillside example content, and degradation rules tied to framework Milestone 5.25.
-
-- [ ] 5.1 Treat Milestone 5.25 in `add-draw-in-window-3d-framework` as a prerequisite gate for any uneven-terrain or hillside skill work in this change
-- [ ] 5.2 Revisit hill-town, slope-road, and uneven-terrain archetypes only after task 5.25 in `add-draw-in-window-3d-framework` is complete
-- [ ] 5.3 Extend the scene schema to describe traversable terrain surfaces only after task 5.25 in `add-draw-in-window-3d-framework` exposes stable terrain-query and movement semantics
-- [ ] 5.4 Add late-phase examples that place settlements, forests, or roads on hillsides while remaining aligned with the terrain contract delivered by task 5.25 in `add-draw-in-window-3d-framework`
-- [ ] 5.5 Validate that terrain-aware scene skills degrade cleanly to flat-ground recipes when task 5.25 in `add-draw-in-window-3d-framework` is unavailable or incomplete
+- [ ] 3.1 Document each relevant demo or ported example with the classes, patterns, and world-building features it demonstrates
+- [ ] 3.2 Add navigation guidance that maps common world-creation or world-edit requests to the most relevant demos
+- [ ] 3.3 Add concise inline comments to important demo code blocks so reusable patterns such as roof builders, stacked box structures, or billboard usage remain understandable to smaller models later
+- [ ] 3.4 Call out major example gaps where a feature is plausible in the framework but not yet well represented in current demos

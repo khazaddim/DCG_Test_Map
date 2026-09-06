@@ -1,26 +1,25 @@
 ## ADDED Requirements
 
-### Requirement: Scene generation skills use constrained framework recipes
-The system SHALL provide repo-local scene-generation skills that convert a high-level scene brief into a constrained recipe that references only framework primitives, material types, and composition patterns already supported by the repository.
+### Requirement: Scene class documentation covers application-level authoring surfaces
+The system SHALL provide repo-local documentation skills that explain the application-level scene-authoring classes, when to use them, how they compose, and which limitations matter when creating or revising a world.
 
-#### Scenario: Town brief becomes a supported recipe
-- **WHEN** a user requests a town, hill, forest, castle, or similar fantasy environment from the skill workflow
-- **THEN** the generated recipe references only supported scene constructs such as terrain surfaces, boxes, triangle-mesh roofs, billboards, lines, polygons, text labels, and existing image or solid materials
+#### Scenario: Small model asks which scene class to use
+- **WHEN** a smaller model needs to decide between classes such as `Box3D`, `GroundPlane3D`, `Billboard3D`, `Polygon3D`, or `TriangleMesh3D`
+- **THEN** the documentation skill explains the intended use of each relevant class
+- **AND** it points to nearby examples or demos that show those classes in practice
 
-### Requirement: Scene generation skills decompose broad requests into archetypes and parameters
-The system SHALL require scene-generation skills to express open-ended world requests through named archetypes, typed parameters, and bounded variation controls rather than unconstrained code generation.
+### Requirement: Scene class documentation includes constraints and refusal guidance
+The system SHALL document which requests fall outside the intended use of each application-level class so a smaller model can avoid unsupported scene edits.
 
-#### Scenario: Lightweight model fills an archetype schema
-- **WHEN** a smaller model is asked to generate a forest hamlet scene
-- **THEN** the skill output identifies an archetype, supplies typed placement and variation fields, and avoids emitting freeform framework code as the primary contract
+#### Scenario: Small model asks for an unsupported usage
+- **WHEN** a smaller model tries to use a class for behavior that the current framework or examples do not support
+- **THEN** the documentation skill calls out the limitation
+- **AND** it suggests a safer nearby pattern or states that more examples are needed
 
-### Requirement: Scene generation skills reject unsupported framework demands
-The system SHALL include validation guidance that causes the skill workflow to reject or rewrite outputs that require unsupported renderer capabilities, primitive families, or material semantics.
+### Requirement: Scene class documentation stays aligned to the capability contract
+The system SHALL keep its class guidance aligned with the approved primitive and material boundary documented for this change.
 
-#### Scenario: Unsupported primitive request is blocked
-- **WHEN** a generated scene plan depends on a capability not present in the current framework, such as arbitrary curved mesh primitives or new shading systems
-- **THEN** the workflow flags the request as out of bounds and keeps the output within the existing framework surface instead of silently inventing new features
-
-#### Scenario: Uneven-terrain traversal waits for framework prerequisite
-- **WHEN** a skill output depends on traversable hillsides, terrain-following movement, or other uneven-terrain behavior
-- **THEN** the workflow treats task 5.25 in `add-draw-in-window-3d-framework` as a prerequisite and does not present that behavior as available before the framework milestone is complete
+#### Scenario: Class guidance matches the allowlist
+- **WHEN** the documentation skill describes supported authoring surfaces
+- **THEN** it centers the current primary scene-authoring classes and approved material families
+- **AND** it avoids implying support for excluded or under-exampled features as if they were mature workflows
