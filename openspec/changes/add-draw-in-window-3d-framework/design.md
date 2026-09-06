@@ -64,6 +64,13 @@ DearCyGui provides `DrawInWindow`, `DrawingList`, `DrawPolygon`, `DrawLine`, `Dr
 - Decision: `TriangleMesh3D` and `TetrahedralMesh3D` are retained scene objects that emit triangle packets efficiently. They do NOT enter the pairwise overlap sorter without spatial acceleration or a documented face-count limit.
 - Rationale: O(n²) pairwise overlap is unsuitable for thousands of triangles.
 
+### Traversal-role policy
+- Decision: Terrain-adjacent objects and collision participants SHALL expose a simple traversal-role policy so scene elements can be treated as traversable support surfaces, blocking boundaries, or legacy flat-ground colliders.
+- Rationale: Uneven terrain movement needs a clear distinction between surfaces the actor may stand on and objects that should stop movement, while preserving the current flat-world collision behavior for existing demos.
+- Alternatives considered:
+  - Inferring traversal from renderable type alone: rejected because the same mesh or polygon family may represent either walkable terrain or a blocking wall.
+  - Replacing the existing collision system wholesale: rejected because flat-ground AABB collision remains useful and should continue to work unchanged for simple scenes.
+
 ### Performance profiling fixtures
 - Decision: The renderer exposes named timing regions that profiling fixtures can measure independently. The initial pipeline stages are:
   1. **Projection/clipping** — camera transform, near-plane clip, viewport clip, polygon cleanup
@@ -89,6 +96,7 @@ DearCyGui provides `DrawInWindow`, `DrawingList`, `DrawPolygon`, `DrawLine`, `Dr
 - **Translucent ordering artifacts** — Alpha-blended faces produce incorrect results when constraints cycle. Mitigation: Explicit approximate-preview designation; no correctness guarantee.
 - **API surface creep** — Large design risks premature abstraction. Mitigation: Phase-gated extraction; each phase has a working demo before proceeding.
 - **Texture clipping fallback** — UV-aware clipping deferred; clipped textured quads show solid fill. Mitigation: Acceptable visual degradation documented in the material contract.
+- **Traversal policy sprawl** — Mixing terrain following with collision roles could create too many special cases. Mitigation: keep the first policy limited to a few explicit roles such as traversable, boundary, and legacy collider semantics.
 
 ## Known Limitation: Line vs Face Partial Occlusion
 

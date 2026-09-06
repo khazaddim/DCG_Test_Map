@@ -152,7 +152,7 @@ The system SHALL support three `DrawStream` animation ownership policies with di
 - **THEN** its world quad is sorted with other faces and the stream is emitted at its sorted position, viewport-clipped
 
 ### Requirement: Collision System
-The system SHALL provide an optional world-space collision system independent of rendered geometry, using axis-aligned 2D footprints with a configurable separation gap.
+The system SHALL provide an optional world-space collision system independent of rendered geometry, using axis-aligned 2D footprints with a configurable separation gap, and it SHALL support an explicit traversal-role policy for distinguishing traversable support surfaces from blocking boundaries as uneven-terrain traversal is introduced.
 
 #### Scenario: Movement validation
 - **WHEN** a candidate footprint is tested against `CollisionWorld.first_blocker()`
@@ -165,6 +165,14 @@ The system SHALL provide an optional world-space collision system independent of
 #### Scenario: World-bound clamping
 - **WHEN** a candidate position extends beyond configured world bounds
 - **THEN** it is clamped before collision testing
+
+#### Scenario: Traversable surface does not behave like a blocking boundary
+- **WHEN** a terrain mesh, polygon, or other scene element is marked with a traversable role
+- **THEN** movement logic may use it as a support surface or height source without treating it as a blocking boundary by default
+
+#### Scenario: Boundary role preserves normal collision blocking
+- **WHEN** a scene element is marked with a boundary role or uses the legacy collider behavior
+- **THEN** movement validation continues to reject candidate positions that conflict with it according to the configured collision policy
 
 ### Requirement: Thread-Safe Async Updates
 The system SHALL support thread-safe submission of immutable scene updates from worker threads, applied atomically on the DCG thread before the next render.

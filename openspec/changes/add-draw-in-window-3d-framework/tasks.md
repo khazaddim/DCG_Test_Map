@@ -133,6 +133,20 @@
 - [x] 5.19 Write integration test: no tetrahedron represented as individual scene object
 - [x] 5.20 Create demo 15 with buildings using varied mesh-based roof shapes
 
+## Milestone 5.25: Terrain Surface Queries and Hill Traversal
+- [ ] 5.25.1 Define a terrain-query abstraction that can return surface height and optional surface normal for a world-space `x,y` position
+- [ ] 5.25.2 Add a mesh-backed terrain implementation for traversable hill surfaces built from supported triangle meshes
+- [ ] 5.25.3 Add a widget or camera query method that resolves screen positions against a traversable terrain surface instead of only a flat `ground_z` plane
+- [ ] 5.25.4 Implement terrain-following player anchoring so actor `z` can be derived from the active terrain surface during movement
+- [ ] 5.25.5 Extend movement/controller logic to support slope-aware traversal on uneven terrain while preserving current flat-ground behavior as a simple mode
+- [ ] 5.25.6 Define the first terrain-aware collision/traversal contract, including explicit traversable-versus-boundary roles, out-of-bounds handling, and steep-slope rejection policy
+- [ ] 5.25.6.1 Define the initial traversal-role vocabulary and default behavior for legacy flat-ground colliders
+- [ ] 5.25.6.2 Ensure boundary-marked objects preserve the existing collision-blocking semantics used by current demos
+- [ ] 5.25.6.3 Ensure traversable-marked terrain surfaces can provide support height without acting as blockers by default
+- [ ] 5.25.7 Create a focused demo showing a player traversing mesh-generated hills without requiring any new render primitive
+- [ ] 5.25.8 Write unit tests for terrain height queries, triangle selection, and slope-policy edge cases
+- [ ] 5.25.9 Write integration tests covering terrain-following movement, screen-to-surface queries, and camera follow on uneven terrain
+
 ## Milestone 5.5: Performance Profiling Fixtures
 - [ ] 5.5.1 Ensure each pipeline stage (projection/clipping, broad-phase, overlap tests, topological sort, DCG node creation) is a separate callable boundary
 - [ ] 5.5.2 Create synthetic scene generators at documented face counts (100, 500, 2000, 10000 faces)
