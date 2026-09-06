@@ -1,10 +1,14 @@
 ## 1. Capability Definitions
 
+Deliverables: documented capability boundaries, a selected intermediate recipe schema format, and a defined allowed vocabulary for primitives, materials, and archetypes.
+
 - [ ] 1.1 Finalize the capability boundaries for scene generation, surface art recipes, and example cataloging against the current framework object inventory
 - [ ] 1.2 Choose and document the intermediate schema format for scene recipes and facade-art recipes
 - [ ] 1.3 Define the allowed primitive, material, and archetype vocabulary that generated outputs may reference
 
 ## 2. Skill Authoring
+
+Deliverables: repo-local skill files for scene generation and surface-art generation, plus explicit refusal guidance for unsupported renderer requests.
 
 - [ ] 2.1 Create repo-local skill instructions for constrained scene generation from high-level world briefs
 - [ ] 2.2 Create repo-local skill instructions for facade and billboard art recipe generation with placement metadata
@@ -12,17 +16,23 @@
 
 ## 3. Example and Asset Seed Data
 
+Deliverables: an initial archetype catalog, seeded scene recipe fixtures, and a starter surface-art recipe library aligned to current framework patterns.
+
 - [ ] 3.1 Build an initial archetype catalog covering towns, hills, forests, castles, and roads using existing framework patterns
 - [ ] 3.2 Create example recipe fixtures derived from current ported demos and at least one fantasy-scene composition per archetype family
 - [ ] 3.3 Define a starter surface-art recipe library for doors, windows, brick, stone, timber, banners, and roof treatments
 
 ## 4. Validation and Workflow
 
+Deliverables: recipe/schema validation checks, workflow documentation from brief to scene output, and a lightweight-model review record with follow-on gaps captured separately.
+
 - [ ] 4.1 Add validation checks or focused tests for recipe/schema conformance and supported primitive usage
 - [ ] 4.2 Add documentation showing how to go from a world brief to a recipe, from a recipe to an example scene, and from a surface-art recipe to framework material usage
 - [ ] 4.3 Review the seeded examples with a lightweight-model-oriented workflow and capture gaps as follow-on changes instead of expanding framework scope implicitly
 
 ## 5. Terrain-Dependent Scene Expansion
+
+Deliverables: a gated late-phase terrain extension covering terrain-aware schema additions, hillside example content, and degradation rules tied to framework Milestone 5.25.
 
 - [ ] 5.1 Treat Milestone 5.25 in `add-draw-in-window-3d-framework` as a prerequisite gate for any uneven-terrain or hillside skill work in this change
 - [ ] 5.2 Revisit hill-town, slope-road, and uneven-terrain archetypes only after task 5.25 in `add-draw-in-window-3d-framework` is complete
