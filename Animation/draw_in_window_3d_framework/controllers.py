@@ -7,6 +7,8 @@ from .math3d import Camera3D, Vec3
 
 @dataclass
 class EdgeBandFollowController:
+    """Keep a world focus point inside a screen-space dead zone by retargeting the camera."""
+
     viewport: "DrawInWindow3D"
     band_x: float
     band_y: float

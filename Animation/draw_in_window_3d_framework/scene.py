@@ -61,6 +61,8 @@ class Material3D(Protocol):
 
 @dataclass(frozen=True)
 class SolidMaterial:
+    """Flat or shaded fill/outline material used by retained solid world primitives."""
+
     fill: ColorValue | None
     outline: ColorValue | None = (24, 27, 25)
     thickness: float = -2.0
@@ -121,6 +123,8 @@ class ScalarFieldMaterial:
 
 @dataclass(frozen=True)
 class ImageMaterial:
+    """Single texture material for billboard quads or selected box faces."""
+
     texture: object
     uv_coordinates: tuple[Vec2, Vec2, Vec2, Vec2] = (
         (0.0, 0.0),
@@ -153,6 +157,8 @@ class ImageMaterial:
 
 @dataclass(frozen=True)
 class AnimatedImageMaterial(ImageMaterial):
+    """Frame-cycled texture material for billboards and other image-backed packets."""
+
     texture: object | None = None
     frames: tuple[object, ...] = ()
     loop_seconds: float = 1.0
@@ -242,6 +248,8 @@ class Renderable3D(Protocol):
 
 @dataclass
 class Scene3D:
+    """Retained container of visible 3D objects composed into one world scene."""
+
     background: ColorValue = (19, 24, 31)
     _objects: dict[int, Renderable3D] = field(default_factory=dict, init=False, repr=False)
     _next_object_id: int = field(default=1, init=False, repr=False)

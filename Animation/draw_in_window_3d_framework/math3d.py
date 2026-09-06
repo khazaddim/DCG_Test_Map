@@ -350,6 +350,8 @@ def shade_directional(
 
 
 class ProjectionPipeline:
+    """Project world-space polygons and lines through the current camera and viewport."""
+
     def __init__(
         self,
         camera: Camera3D,

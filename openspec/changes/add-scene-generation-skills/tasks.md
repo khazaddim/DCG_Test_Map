@@ -10,9 +10,9 @@ Deliverables: documented capability boundaries, a selected intermediate recipe s
 
 Deliverables: repo-local documentation skills for all application-level scene-authoring classes, targeted documentation for supporting utilities used directly by demos 11, 14, and 15, in-code docstrings for public classes that currently lack them, plus usage guidance, key constraints, and nearby examples.
 
-- [ ] 2.1 Document each application-level class used for scene authoring in demos 11, 14, and 15, including purpose, key parameters, and when to prefer it over nearby alternatives
-- [ ] 2.2 Add class-local guidance on important limitations, unsupported assumptions, and safe fallback patterns for smaller models
-- [ ] 2.3 Link each class guide to the most relevant demos or examples that show it in practice, and add concise docstrings to the corresponding public classes where that guidance is currently missing
+- [x] 2.1 Document each application-level class used for scene authoring in demos 11, 14, and 15, including purpose, key parameters, and when to prefer it over nearby alternatives
+- [x] 2.2 Add class-local guidance on important limitations, unsupported assumptions, and safe fallback patterns for smaller models
+- [x] 2.3 Link each class guide to the most relevant demos or examples that show it in practice, and add concise docstrings to the corresponding public classes where that guidance is currently missing
 
 ## 3. Demo Navigation Documentation
 

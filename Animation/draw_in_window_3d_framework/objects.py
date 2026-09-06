@@ -55,6 +55,8 @@ def _oriented_away_from_opposite(
 
 @dataclass(frozen=True)
 class MeshEdgeStyle:
+    """Optional per-mesh edge styling for TriangleMesh3D accent lines."""
+
     color: tuple[int, int, int] | tuple[int, int, int, int] | int = (24, 27, 25, 140)
     thickness: float = -1.0
     render_layer: LineRenderLayer = LineRenderLayer.WORLD
@@ -68,6 +70,8 @@ class MeshTriangle:
 
 @dataclass
 class TriangleMesh3D:
+    """Explicit triangle-authored surface for roofs, ramps, and custom planar geometry."""
+
     vertices: tuple[Vec3, ...]
     triangles: tuple[tuple[int, int, int], ...]
     material: Material3D | ScalarFieldMaterial
@@ -212,6 +216,8 @@ class TriangleMesh3D:
 
 @dataclass
 class TetrahedralMesh3D:
+    """Volumetric tetrahedral mesh that renders its extracted exterior triangle shell."""
+
     vertices: tuple[Vec3, ...]
     cells: tuple[tuple[int, int, int, int], ...]
     material: Material3D | ScalarFieldMaterial
@@ -292,6 +298,8 @@ class TetrahedralMesh3D:
 
 @dataclass
 class Polygon3D:
+    """Single retained planar polygon for filled world patches or decals."""
+
     points: tuple[Vec3, ...]
     material: SolidMaterial
     cull_back_face: bool = True
@@ -311,6 +319,8 @@ class Polygon3D:
 
 @dataclass
 class GroundPlane3D:
+    """Axis-aligned rectangular ground surface at one constant elevation."""
+
     bounds: tuple[float, float, float, float]
     z: float
     material: SolidMaterial
@@ -329,6 +339,8 @@ class GroundPlane3D:
 
 @dataclass
 class Line3D:
+    """Single retained world-space line segment."""
+
     start: Vec3
     end: Vec3
     color: tuple[int, int, int] | tuple[int, int, int, int] | int
@@ -347,6 +359,8 @@ class Line3D:
 
 @dataclass
 class Polyline3D:
+    """Connected retained world-space path for borders, routes, and outlines."""
+
     points: tuple[Vec3, ...]
     color: tuple[int, int, int] | tuple[int, int, int, int] | int
     thickness: float = -1.0
@@ -369,6 +383,8 @@ class Polyline3D:
 
 @dataclass
 class Text3D:
+    """World-anchored text label with screen-space size clamping."""
+
     position: Vec3
     text: str
     size: float
@@ -391,6 +407,8 @@ class Text3D:
 
 @dataclass
 class Box3D:
+    """Axis-aligned rectangular prism for buildings, blockers, and simple volumes."""
+
     center: Vec3
     size: tuple[float, float, float]
     material: Material3D
@@ -462,6 +480,8 @@ def billboard_quad(anchor: Vec3, world_size: tuple[float, float], yaw_deg: float
 
 @dataclass
 class Billboard3D:
+    """Camera-yaw-facing textured quad for trees, signs, and other sprite-like props."""
+
     anchor: Vec3
     world_size: tuple[float, float]
     material: ImageMaterial | AnimatedImageMaterial
@@ -492,6 +512,8 @@ class Billboard3D:
 
 @dataclass
 class DrawStream3D:
+    """Retained animated draw callback for projected overlays or world-linked effects."""
+
     projection_policy: AnimationProjection
     frame_count: int
     loop_seconds: float
