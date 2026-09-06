@@ -34,8 +34,8 @@ from Animation.draw_in_window_3d_framework import (
 
 VIEW_W = 900
 VIEW_H = 600
-WORLD_W = 100.0
-WORLD_H = 100.0
+WORLD_W = 150.0
+WORLD_H = 150.0
 GRID_STEP = 5
 MAJOR_GRID_STEP = 25
 MOVE_STEP = GRID_STEP
@@ -47,6 +47,7 @@ ZOOM_DEFAULT = 3.5
 AVATAR_SIZE = 5.0
 AVATAR_HEIGHT = 6.0
 GROUND_PAD = 200.0
+CONTROLS_HEIGHT = 220.0
 
 
 def build_scene() -> tuple[Scene3D, Box3D]:
@@ -94,9 +95,9 @@ def build_scene() -> tuple[Scene3D, Box3D]:
             )
         )
 
-    # Label every 5 ft intersection with an ordered pair in world feet.
-    for x_coordinate in range(0, int(WORLD_W) + 1, GRID_STEP):
-        for y_coordinate in range(0, int(WORLD_H) + 1, GRID_STEP):
+    # Label only major 25 ft intersections to keep the scene responsive.
+    for x_coordinate in range(0, int(WORLD_W) + 1, MAJOR_GRID_STEP):
+        for y_coordinate in range(0, int(WORLD_H) + 1, MAJOR_GRID_STEP):
             scene.add(
                 Text3D(
                     position=(float(x_coordinate + 1), float(y_coordinate + 1), 1.0),
@@ -149,6 +150,10 @@ class TownGridController:
             world_bounds=(0.0, 0.0, WORLD_W, WORLD_H),
         )
         self._update_status()
+
+    def on_resize(self, *_: object) -> None:
+        self.viewport.invalidate()
+        self.viewport.render_now()
 
     def move_left(self, *_):
         self._move(-MOVE_STEP, 0.0)
@@ -215,56 +220,73 @@ def build_ui(context: dcg.Context) -> None:
     with dcg.Window(
         context,
         label="Town planning grid",
-        width=VIEW_W + 40,
-        height=VIEW_H + 300,
+        width="fillx",
+        height="filly",
+        primary=True,
     ) as window:
-        dcg.Text(context, value="Town planning canvas", wrap=VIEW_W)
-        status = dcg.Text(context, value="")
-        with DrawInWindow3D(
-            context,
-            width=VIEW_W,
-            height=VIEW_H,
-            scene=scene,
-            camera=initial_camera,
-        ) as viewport:
-            dcg.DrawRect(
+        with dcg.VerticalLayout(context, parent=window) as content:
+            dcg.Text(context, parent=content, value="Town planning canvas")
+            with dcg.ChildWindow(
                 context,
-                parent=viewport,
-                pmin=(0, 0),
-                pmax=(VIEW_W, VIEW_H),
-                color=(130, 151, 133),
-                thickness=-2,
-            )
+                parent=content,
+                width="fillx",
+                height=f"window.height-{CONTROLS_HEIGHT:.0f}",
+                no_scrollbar=True,
+            ) as viewport_area:
+                viewport = DrawInWindow3D(
+                    context,
+                    parent=viewport_area,
+                    width="fillx",
+                    height="filly",
+                    scene=scene,
+                    camera=initial_camera,
+                )
 
-        controller = TownGridController(viewport, avatar, status)
-        dcg.Slider(
-            context,
-            label="Camera pitch from overhead (degrees)",
-            min_value=PITCH_MIN,
-            max_value=PITCH_MAX,
-            value=initial_camera.pitch_deg,
-            width=VIEW_W,
-            callback=controller.set_pitch,
-        )
-        dcg.Slider(
-            context,
-            label="Camera yaw (degrees)",
-            min_value=-180.0,
-            max_value=180.0,
-            value=initial_camera.yaw_deg,
-            width=VIEW_W,
-            callback=controller.set_yaw,
-        )
-        dcg.Slider(
-            context,
-            label="Camera zoom",
-            min_value=ZOOM_MIN,
-            max_value=ZOOM_MAX,
-            value=initial_camera.zoom,
-            width=VIEW_W,
-            callback=controller.set_zoom,
-        )
-        dcg.Button(context, label="Reset view", callback=controller.reset_view)
+            with dcg.ChildWindow(
+                context,
+                parent=content,
+                width="fillx",
+                height=CONTROLS_HEIGHT,
+                no_scrollbar=True,
+            ) as controls:
+                status = dcg.Text(context, parent=controls, value="")
+                controller = TownGridController(viewport, avatar, status)
+                dcg.Slider(
+                    context,
+                    parent=controls,
+                    label="Camera pitch from overhead (degrees)",
+                    min_value=PITCH_MIN,
+                    max_value=PITCH_MAX,
+                    value=initial_camera.pitch_deg,
+                    width="fillx",
+                    callback=controller.set_pitch,
+                )
+                dcg.Slider(
+                    context,
+                    parent=controls,
+                    label="Camera yaw (degrees)",
+                    min_value=-180.0,
+                    max_value=180.0,
+                    value=initial_camera.yaw_deg,
+                    width="fillx",
+                    callback=controller.set_yaw,
+                )
+                dcg.Slider(
+                    context,
+                    parent=controls,
+                    label="Camera zoom",
+                    min_value=ZOOM_MIN,
+                    max_value=ZOOM_MAX,
+                    value=initial_camera.zoom,
+                    width="fillx",
+                    callback=controller.set_zoom,
+                )
+                dcg.Button(context, parent=controls, label="Reset view", callback=controller.reset_view)
+
+            viewport.handlers += [
+                dcg.ResizeHandler(context, callback=controller.on_resize),
+            ]
+
         window.handlers += [
             dcg.KeyPressHandler(context, key=dcg.Key.LEFTARROW, repeat=False, callback=controller.move_left),
             dcg.KeyPressHandler(context, key=dcg.Key.RIGHTARROW, repeat=False, callback=controller.move_right),
