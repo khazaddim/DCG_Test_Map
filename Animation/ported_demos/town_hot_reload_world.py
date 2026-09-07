@@ -33,6 +33,8 @@ ROAD_SEGMENT_LENGTH = 15.0
 ROAD_TEXTURE_SIZE = (64, 512)
 ROAD_TEXTURE_ENABLED = False
 POSITION_LABELS_ENABLED = False
+HILL_ENABLED = False
+BOULDER_ENABLED = True
 
 SKY_COLOR = (23, 29, 34)
 GROUND_COLOR = (78, 116, 76)
@@ -44,6 +46,8 @@ BORDER_COLOR = (178, 146, 88)
 HILL_GRID_MAJOR_COLOR = (176, 182, 178)
 HILL_GRID_MINOR_COLOR = (138, 148, 141)
 HILL_MATERIAL = SolidMaterial(fill=(92, 132, 82), outline=None, thickness=-1.0, shaded=True)
+BOULDER_MATERIAL = SolidMaterial(fill=(116, 119, 116), outline=(58, 62, 60), thickness=-1.0, shaded=True)
+BOULDER_EDGES = MeshEdgeStyle(color=(72, 76, 74), thickness=-1.0)
 HOUSE_WALL_MATERIAL = SolidMaterial(fill=(146, 154, 150), outline=(54, 62, 66), thickness=-1.0)
 GABLE_ROOF_MATERIAL = SolidMaterial(fill=(178, 76, 54), outline=(74, 43, 36), thickness=-1.0)
 HIP_ROOF_MATERIAL = SolidMaterial(fill=(67, 112, 139), outline=(27, 50, 65), thickness=-1.0)
@@ -87,12 +91,75 @@ def add_hip_house(scene: Scene3D, center: tuple[float, float], size: tuple[float
     )
 
 
+def add_boulder(scene: Scene3D, center: tuple[float, float], size: tuple[float, float], height: float) -> None:
+    size_x, size_y = size
+    bottom_ring = tuple(
+        (
+            center[0] + size_x * radius_x * math.cos(angle),
+            center[1] + size_y * radius_y * math.sin(angle),
+            0.1,
+        )
+        for angle, radius_x, radius_y in (
+            (0.0, 1.00, 0.86),
+            (0.78, 0.92, 1.00),
+            (1.57, 0.78, 0.95),
+            (2.35, 1.00, 0.82),
+            (3.14, 0.88, 1.00),
+            (3.92, 1.00, 0.90),
+            (4.71, 0.82, 1.00),
+            (5.49, 0.94, 0.84),
+        )
+    )
+    shoulder_ring = tuple(
+        (
+            center[0] + size_x * radius_x * math.cos(angle),
+            center[1] + size_y * radius_y * math.sin(angle),
+            shoulder_height,
+        )
+        for (angle, radius_x, radius_y), shoulder_height in zip(
+            (
+                (0.0, 0.88, 0.72),
+                (0.78, 0.78, 0.86),
+                (1.57, 0.68, 0.80),
+                (2.35, 0.84, 0.70),
+                (3.14, 0.74, 0.84),
+                (3.92, 0.86, 0.76),
+                (4.71, 0.70, 0.84),
+                (5.49, 0.80, 0.72),
+            ),
+            (height * 0.52, height * 0.64, height * 0.58, height * 0.70, height * 0.55, height * 0.62, height * 0.68, height * 0.57),
+        )
+    )
+    vertices = bottom_ring + shoulder_ring + ((center[0] + size_x * 0.12, center[1] - size_y * 0.08, height),)
+    triangles = []
+    for index in range(8):
+        next_index = (index + 1) % 8
+        triangles.extend(
+            (
+                (index, next_index, 8 + next_index),
+                (index, 8 + next_index, 8 + index),
+                (8 + index, 8 + next_index, 16),
+            )
+        )
+    scene.add(
+        TriangleMesh3D(
+            vertices=vertices,
+            triangles=tuple(triangles),
+            material=BOULDER_MATERIAL,
+            edges=BOULDER_EDGES,
+            cull_back_faces=False,
+        )
+    )
+
+
 def add_rolling_hill(
     scene: Scene3D,
     corner: tuple[float, float],
     extent: tuple[float, float],
     height: float,
 ) -> None:
+    # The extents control how far the hill falls off from the peak at the corner.
+    # Grid resolution follows the map's 5-unit cells automatically.
     x_divisions = int(extent[0] / GRID_STEP)
     y_divisions = int(extent[1] / GRID_STEP)
     vertices = []
@@ -103,6 +170,7 @@ def add_rolling_hill(
             x = corner[0] - extent[0] + extent[0] * column / x_divisions
             normalized_x = (corner[0] - x) / extent[0]
             distance = normalized_x * normalized_x + normalized_y * normalized_y
+            # Lower 3.5 for a broader, gentler hill; raise it for a tighter peak.
             vertices.append((x, y, height * math.exp(-3.5 * distance)))
 
     triangles = []
@@ -232,12 +300,17 @@ def build_scene(road_texture: object | None = None) -> tuple[Scene3D, Box3D]:
             add_gable_house(scene, center, size, height)
         else:
             add_hip_house(scene, center, size, height)
-    add_rolling_hill(
-        scene,
-        corner=(150.0, 150.0),
-        extent=(60.0, 105.0),
-        height=16.0,
-    )
+    if BOULDER_ENABLED:
+        add_boulder(scene, center=(96.0, 75.0), size=(2.0, 3.5), height=4.5)
+    if HILL_ENABLED:
+        # Experiment here: corner moves the peak, extent changes the footprint,
+        # and height controls the peak elevation.
+        add_rolling_hill(
+            scene,
+            corner=(150.0, 150.0),
+            extent=(30.0, 50.0),
+            height=16.0,
+        )
 
     for coordinate in range(0, int(WORLD_W) + 1, GRID_STEP):
         major = coordinate % MAJOR_GRID_STEP == 0
