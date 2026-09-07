@@ -39,12 +39,16 @@ class HotReloadTownController:
         self,
         viewport: DrawInWindow3D,
         avatar,
+        context: dcg.Context,
+        road_texture: dcg.Texture,
         world_module: ModuleType,
         status: dcg.Text,
         reload_status: dcg.Text,
     ) -> None:
         self.viewport = viewport
         self.avatar = avatar
+        self.context = context
+        self.road_texture = road_texture
         self.world_module = world_module
         self.status = status
         self.reload_status = reload_status
@@ -85,7 +89,8 @@ class HotReloadTownController:
         try:
             importlib.invalidate_caches()
             candidate_module = importlib.reload(self.world_module)
-            candidate_scene, candidate_avatar = candidate_module.build_scene()
+            candidate_texture = candidate_module.create_road_texture(self.context)
+            candidate_scene, candidate_avatar = candidate_module.build_scene(candidate_texture)
         except Exception as error:
             self.reload_status.value = f"Reload failed: {type(error).__name__}: {error}"
             traceback.print_exc()
@@ -94,6 +99,7 @@ class HotReloadTownController:
         self.world_module = candidate_module
         self.viewport.scene = candidate_scene
         self.avatar = candidate_avatar
+        self.road_texture = candidate_texture
         self._configure_follow()
         self._set_camera(target=self._clamped_target(self.viewport.camera.target))
         self.reload_status.value = "Reloaded world definition."
@@ -145,7 +151,8 @@ class HotReloadTownController:
 
 
 def build_ui(context: dcg.Context) -> HotReloadTownController:
-    scene, avatar = world.build_scene()
+    road_texture = world.create_road_texture(context)
+    scene, avatar = world.build_scene(road_texture)
     initial_camera = Camera3D(
         target=avatar.center,
         yaw_deg=0.0,
@@ -181,7 +188,7 @@ def build_ui(context: dcg.Context) -> HotReloadTownController:
             ) as controls:
                 status = dcg.Text(context, parent=controls, value="")
                 reload_status = dcg.Text(context, parent=controls, value="World definition loaded.")
-                controller = HotReloadTownController(viewport, avatar, world, status, reload_status)
+                controller = HotReloadTownController(viewport, avatar, context, road_texture, world, status, reload_status)
                 dcg.Button(context, parent=controls, label="Reload world", callback=controller.reload_world)
                 dcg.Slider(
                     context,
