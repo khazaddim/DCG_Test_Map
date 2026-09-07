@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import math
+
 import dearcygui as dcg
 
 from Animation.draw_in_window_3d_framework import (
@@ -39,6 +41,9 @@ GRID_MAJOR_COLOR = (126, 142, 150)
 GRID_MINOR_COLOR = (108, 140, 96)
 LABEL_COLOR = (210, 218, 211)
 BORDER_COLOR = (178, 146, 88)
+HILL_GRID_MAJOR_COLOR = (176, 182, 178)
+HILL_GRID_MINOR_COLOR = (138, 148, 141)
+HILL_MATERIAL = SolidMaterial(fill=(92, 132, 82), outline=None, thickness=-1.0, shaded=True)
 HOUSE_WALL_MATERIAL = SolidMaterial(fill=(146, 154, 150), outline=(54, 62, 66), thickness=-1.0)
 GABLE_ROOF_MATERIAL = SolidMaterial(fill=(178, 76, 54), outline=(74, 43, 36), thickness=-1.0)
 HIP_ROOF_MATERIAL = SolidMaterial(fill=(67, 112, 139), outline=(27, 50, 65), thickness=-1.0)
@@ -47,7 +52,6 @@ HOUSE_SPECS = (
     ((35.0, 30.0), (20.0, 18.0), 12.0, "gable"),
     ((115.0, 48.0), (18.0, 22.0), 14.0, "hip"),
     ((35.0, 95.0), (22.0, 16.0), 13.0, "hip"),
-    ((115.0, 118.0), (20.0, 18.0), 12.0, "gable"),
 )
 
 
@@ -81,6 +85,69 @@ def add_hip_house(scene: Scene3D, center: tuple[float, float], size: tuple[float
             edges=ROOF_EDGES,
         )
     )
+
+
+def add_rolling_hill(
+    scene: Scene3D,
+    corner: tuple[float, float],
+    extent: tuple[float, float],
+    height: float,
+) -> None:
+    x_divisions = int(extent[0] / GRID_STEP)
+    y_divisions = int(extent[1] / GRID_STEP)
+    vertices = []
+    for row in range(y_divisions + 1):
+        y = corner[1] - extent[1] + extent[1] * row / y_divisions
+        normalized_y = (corner[1] - y) / extent[1]
+        for column in range(x_divisions + 1):
+            x = corner[0] - extent[0] + extent[0] * column / x_divisions
+            normalized_x = (corner[0] - x) / extent[0]
+            distance = normalized_x * normalized_x + normalized_y * normalized_y
+            vertices.append((x, y, height * math.exp(-3.5 * distance)))
+
+    triangles = []
+    row_width = x_divisions + 1
+    for row in range(y_divisions):
+        for column in range(x_divisions):
+            current = row * row_width + column
+            next_row = current + row_width
+            triangles.extend(((current, current + 1, next_row + 1), (current, next_row + 1, next_row)))
+
+    scene.add(TriangleMesh3D(vertices=tuple(vertices), triangles=tuple(triangles), material=HILL_MATERIAL, cull_back_faces=False))
+    for row in range(y_divisions + 1):
+        for column in range(x_divisions):
+            start_index = row * row_width + column
+            end_index = start_index + 1
+            start = vertices[start_index]
+            end = vertices[end_index]
+            x_coordinate = round(start[0] / GRID_STEP) * GRID_STEP
+            major = x_coordinate % MAJOR_GRID_STEP == 0
+            scene.add(
+                Line3D(
+                    start=(start[0], start[1], start[2] + 0.08),
+                    end=(end[0], end[1], end[2] + 0.08),
+                    color=HILL_GRID_MAJOR_COLOR if major else HILL_GRID_MINOR_COLOR,
+                    thickness=-2.0 if major else -1.0,
+                    render_layer=LineRenderLayer.WORLD,
+                )
+            )
+    for row in range(y_divisions):
+        for column in range(x_divisions + 1):
+            start_index = row * row_width + column
+            end_index = start_index + row_width
+            start = vertices[start_index]
+            end = vertices[end_index]
+            y_coordinate = round(start[1] / GRID_STEP) * GRID_STEP
+            major = y_coordinate % MAJOR_GRID_STEP == 0
+            scene.add(
+                Line3D(
+                    start=(start[0], start[1], start[2] + 0.08),
+                    end=(end[0], end[1], end[2] + 0.08),
+                    color=HILL_GRID_MAJOR_COLOR if major else HILL_GRID_MINOR_COLOR,
+                    thickness=-2.0 if major else -1.0,
+                    render_layer=LineRenderLayer.WORLD,
+                )
+            )
 
 
 def create_road_texture(context: dcg.Context) -> dcg.Texture | None:
@@ -165,6 +232,12 @@ def build_scene(road_texture: object | None = None) -> tuple[Scene3D, Box3D]:
             add_gable_house(scene, center, size, height)
         else:
             add_hip_house(scene, center, size, height)
+    add_rolling_hill(
+        scene,
+        corner=(150.0, 150.0),
+        extent=(60.0, 105.0),
+        height=16.0,
+    )
 
     for coordinate in range(0, int(WORLD_W) + 1, GRID_STEP):
         major = coordinate % MAJOR_GRID_STEP == 0
