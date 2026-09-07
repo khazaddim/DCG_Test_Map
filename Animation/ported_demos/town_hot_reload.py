@@ -42,6 +42,7 @@ class HotReloadTownController:
         context: dcg.Context,
         road_texture: dcg.Texture,
         world_module: ModuleType,
+        collisions,
         status: dcg.Text,
         reload_status: dcg.Text,
     ) -> None:
@@ -50,6 +51,7 @@ class HotReloadTownController:
         self.context = context
         self.road_texture = road_texture
         self.world_module = world_module
+        self.collisions = collisions
         self.status = status
         self.reload_status = reload_status
         self._configure_follow()
@@ -91,6 +93,7 @@ class HotReloadTownController:
             candidate_module = importlib.reload(self.world_module)
             candidate_texture = candidate_module.create_road_texture(self.context)
             candidate_scene, candidate_avatar = candidate_module.build_scene(candidate_texture)
+            candidate_collisions = candidate_module.build_collision_world()
         except Exception as error:
             self.reload_status.value = f"Reload failed: {type(error).__name__}: {error}"
             traceback.print_exc()
@@ -100,6 +103,7 @@ class HotReloadTownController:
         self.viewport.scene = candidate_scene
         self.avatar = candidate_avatar
         self.road_texture = candidate_texture
+        self.collisions = candidate_collisions
         self._configure_follow()
         self._set_camera(target=self._clamped_target(self.viewport.camera.target))
         self.reload_status.value = "Reloaded world definition."
@@ -111,6 +115,17 @@ class HotReloadTownController:
             max(half_size, min(self.world_module.WORLD_H - half_size, self.avatar.center[1] + dy)),
             self.avatar.center[2],
         )
+        blocker = self.collisions.first_blocker(
+            self.world_module.AabbFootprint.from_center(
+                next_center[0],
+                next_center[1],
+                self.world_module.AVATAR_SIZE,
+                self.world_module.AVATAR_SIZE,
+            )
+        )
+        if blocker is not None:
+            self._update_status()
+            return
         self.avatar.center = next_center
         self.follow.update(next_center)
         self.viewport.invalidate()
@@ -153,6 +168,7 @@ class HotReloadTownController:
 def build_ui(context: dcg.Context) -> HotReloadTownController:
     road_texture = world.create_road_texture(context)
     scene, avatar = world.build_scene(road_texture)
+    collisions = world.build_collision_world()
     initial_camera = Camera3D(
         target=avatar.center,
         yaw_deg=0.0,
@@ -188,7 +204,7 @@ def build_ui(context: dcg.Context) -> HotReloadTownController:
             ) as controls:
                 status = dcg.Text(context, parent=controls, value="")
                 reload_status = dcg.Text(context, parent=controls, value="World definition loaded.")
-                controller = HotReloadTownController(viewport, avatar, context, road_texture, world, status, reload_status)
+                controller = HotReloadTownController(viewport, avatar, context, road_texture, world, collisions, status, reload_status)
                 dcg.Button(context, parent=controls, label="Reload world", callback=controller.reload_world)
                 dcg.Slider(
                     context,

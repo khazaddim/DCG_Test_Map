@@ -7,7 +7,9 @@ import math
 import dearcygui as dcg
 
 from Animation.draw_in_window_3d_framework import (
+    AabbFootprint,
     Box3D,
+    CollisionWorld,
     GroundPlane3D,
     ImageMaterial,
     Line3D,
@@ -35,6 +37,7 @@ ROAD_TEXTURE_ENABLED = False
 POSITION_LABELS_ENABLED = False
 HILL_ENABLED = False
 BOULDER_ENABLED = True
+COLLISION_GAP = 2.0
 
 SKY_COLOR = (23, 29, 34)
 GROUND_COLOR = (78, 116, 76)
@@ -57,6 +60,10 @@ HOUSE_SPECS = (
     ((115.0, 48.0), (18.0, 22.0), 14.0, "hip"),
     ((35.0, 95.0), (22.0, 16.0), 13.0, "hip"),
 )
+BOULDER_CENTER = (96.0, 75.0)
+BOULDER_SIZE = (2.0, 3.5)
+BOULDER_HEIGHT = 4.5
+BOULDER_COLLISION_SCALE = 0.7
 
 
 def add_gable_house(scene: Scene3D, center: tuple[float, float], size: tuple[float, float], height: float) -> None:
@@ -150,6 +157,23 @@ def add_boulder(scene: Scene3D, center: tuple[float, float], size: tuple[float, 
             cull_back_faces=False,
         )
     )
+
+
+def build_collision_world() -> CollisionWorld:
+    collisions = CollisionWorld(gap=COLLISION_GAP)
+    for index, (center, size, _height, _roof_type) in enumerate(HOUSE_SPECS, start=1):
+        collisions.add(f"house {index}", AabbFootprint.from_center(center[0], center[1], size[0], size[1]))
+    if BOULDER_ENABLED:
+        collisions.add(
+            "boulder",
+            AabbFootprint.from_center(
+                BOULDER_CENTER[0],
+                BOULDER_CENTER[1],
+                BOULDER_SIZE[0] * 2.0 * BOULDER_COLLISION_SCALE,
+                BOULDER_SIZE[1] * 2.0 * BOULDER_COLLISION_SCALE,
+            ),
+        )
+    return collisions
 
 
 def add_rolling_hill(
@@ -301,7 +325,7 @@ def build_scene(road_texture: object | None = None) -> tuple[Scene3D, Box3D]:
         else:
             add_hip_house(scene, center, size, height)
     if BOULDER_ENABLED:
-        add_boulder(scene, center=(96.0, 75.0), size=(2.0, 3.5), height=4.5)
+        add_boulder(scene, center=BOULDER_CENTER, size=BOULDER_SIZE, height=BOULDER_HEIGHT)
     if HILL_ENABLED:
         # Experiment here: corner moves the peak, extent changes the footprint,
         # and height controls the peak elevation.
