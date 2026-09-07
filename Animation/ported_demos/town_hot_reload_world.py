@@ -30,6 +30,7 @@ ROAD_WIDTH = 30.0
 ROAD_SEGMENT_LENGTH = 15.0
 ROAD_TEXTURE_SIZE = (64, 512)
 ROAD_TEXTURE_ENABLED = False
+POSITION_LABELS_ENABLED = False
 
 SKY_COLOR = (23, 29, 34)
 GROUND_COLOR = (78, 116, 76)
@@ -189,18 +190,19 @@ def build_scene(road_texture: object | None = None) -> tuple[Scene3D, Box3D]:
             )
         )
 
-    for x_coordinate in range(0, int(WORLD_W) + 1, MAJOR_GRID_STEP):
-        for y_coordinate in range(0, int(WORLD_H) + 1, MAJOR_GRID_STEP):
-            scene.add(
-                Text3D(
-                    position=(float(x_coordinate + 1), float(y_coordinate + 1), 1.0),
-                    text=f"({x_coordinate}, {y_coordinate})",
-                    size=10.0,
-                    color=LABEL_COLOR,
-                    min_size=7.0,
-                    max_size=12.0,
+    if POSITION_LABELS_ENABLED:
+        for x_coordinate in range(0, int(WORLD_W) + 1, MAJOR_GRID_STEP):
+            for y_coordinate in range(0, int(WORLD_H) + 1, MAJOR_GRID_STEP):
+                scene.add(
+                    Text3D(
+                        position=(float(x_coordinate + 1), float(y_coordinate + 1), 1.0),
+                        text=f"({x_coordinate}, {y_coordinate})",
+                        size=10.0,
+                        color=LABEL_COLOR,
+                        min_size=7.0,
+                        max_size=12.0,
+                    )
                 )
-            )
 
     scene.add(
         Polyline3D(
