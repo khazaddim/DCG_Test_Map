@@ -147,6 +147,23 @@
 - [ ] 5.25.8 Write unit tests for terrain height queries, triangle selection, and slope-policy edge cases
 - [ ] 5.25.9 Write integration tests covering terrain-following movement, screen-to-surface queries, and camera follow on uneven terrain
 
+## Milestone 5.4: Screen-Space Sweep-and-Prune with Cached AABBs
+- [ ] 5.4.1 Add per-sort instrumentation to the unchanged all-pairs `OverlapDepthSorter`: total entries, eligible polygons, possible polygon pairs, exact tests, accepted graph edges, cycle state, duration, and `all_pairs` strategy label
+- [ ] 5.4.2 Add a private immutable screen-bounds representation and compute one AABB per eligible projected polygon from final screen-space points; exclude non-polygons and entries with fewer than three points
+- [ ] 5.4.3 Add unit tests for AABB calculation, polygon eligibility, degenerate-entry exclusion, and frame-local bounds recomputation
+- [ ] 5.4.4 Implement deterministic x-axis sweep candidate generation ordered by `(min_x, entry_index)`, with an active list pruned using strict x separation
+- [ ] 5.4.5 Add the y-interval rejection step, retain touching AABBs as candidates, and emit each surviving pair once in canonical index order
+- [ ] 5.4.6 Record x-active pair and AABB-candidate counts and label the accelerated strategy `sweep_and_prune`; ensure exact-test count matches the number of emitted candidates
+- [ ] 5.4.7 Extract candidate-pair generation from the current sorter loop without changing the existing all-pairs implementation, then route both all-pairs and sweep candidates through one shared exact-test, ordering-edge, topological-sort, stable-tie, and cycle-fallback pipeline
+- [ ] 5.4.8 Add `OverlapDepthSorter(use_sweep_and_prune: bool = False)` as a startup-time selector between the preserved all-pairs generator and the new sweep generator; keep the branch limited to candidate generation
+- [ ] 5.4.9 Add a top-level `USE_SWEEP_AND_PRUNE` boolean to the target diagnostic or town demo and pass it when constructing `OverlapDepthSorter`, allowing the strategy to be changed before program launch without adding runtime UI state
+- [ ] 5.4.10 Write candidate-generation unit tests for x-separated, y-separated, overlapping, touching, equal-`min_x`, and three-way-overlap AABBs, including uniqueness and deterministic order
+- [ ] 5.4.11 Write selector tests proving `False` uses all-pairs and `True` uses sweep-and-prune while both preserve the `frame is None` average-depth fallback
+- [ ] 5.4.12 Write differential tests proving all-pairs and sweep-and-prune return identical stable-index order and cycle state for distributed boxes, houses/towers, billboards, clipped polygons, coplanar/equal-depth faces, cycles, and deterministic randomized convex polygons
+- [ ] 5.4.13 Add focused performance fixtures at 32, 64, 128, 256, and 512 polygons for distributed and dense scenes, reporting median and 95th-percentile duration with every pair counter for both boolean settings
+- [ ] 5.4.14 Verify distributed fixtures materially reduce exact tests and improve target-scene yaw/pitch sort latency while dense fixtures document the remaining O(n²) worst case
+- [ ] 5.4.15 Make sweep-and-prune the constructor default only after correctness and performance gates pass; retain the all-pairs implementation and startup boolean as a rollback and comparison path, and document the measured result
+
 ## Milestone 5.5: Performance Profiling Fixtures
 - [ ] 5.5.1 Ensure each pipeline stage (projection/clipping, broad-phase, overlap tests, topological sort, DCG node creation) is a separate callable boundary
 - [ ] 5.5.2 Create synthetic scene generators at documented face counts (100, 500, 2000, 10000 faces)

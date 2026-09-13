@@ -60,6 +60,20 @@ DearCyGui provides `DrawInWindow`, `DrawingList`, `DrawPolygon`, `DrawLine`, `Dr
 - Decision: `OverlapDepthSorter` (demo 13 topological sort) is default for small scenes. `AverageDepthSorter` is the explicit fallback and performance option.
 - Rationale: Average-depth painter ordering fails for overlapping coplanar geometry. Small-scene demos should show correct results by default.
 
+### Screen-space sweep-and-prune broad phase
+- Decision: `OverlapDepthSorter` SHALL use a pure-Python screen-space sweep-and-prune broad phase with per-sort cached AABBs to reduce the polygon pairs sent to `overlapping_polygon_depths()`. Only projected polygon entries with at least three points participate. Their bounds are computed from final `ProjectedRenderEntry.points`, sorted deterministically by `(min_x, entry_index)`, pruned on the x axis, and filtered on the y axis before exact testing.
+- Rationale: Camera changes invalidate projected geometry, so bounds must be cheap frame-local data rather than persistent world-space state. Sweep-and-prune avoids tuning grid cell sizes and avoids visiting x-separated pairs in spatially distributed map scenes while preserving the existing exact overlap, depth, graph, topological-sort, and cycle-fallback semantics.
+- Boundary rule: Touching AABBs remain candidates. An interval is rejected only under strict separation (`max_x < min_x` or `max_y < min_y`). Any future screen-space bounds tolerance must be a separate linear-distance setting rather than reusing area or depth epsilon values.
+- Complexity: Expected candidate generation is approximately $O(n \log n + k)$ for the sort and active comparisons, where $k$ is the number of x-active pairs. Dense projected geometry remains $O(n^2)$ in the worst case.
+- Evaluation switch: Preserve the current all-pairs candidate generator as a separate implementation and add sweep-and-prune alongside it. `OverlapDepthSorter` accepts a startup-time `use_sweep_and_prune: bool`, initially defaulting to `False`, and the target demo exposes a top-level `USE_SWEEP_AND_PRUNE` constant that is passed when constructing the sorter. The value is selected before launch; runtime UI switching and mid-frame mutation are out of scope.
+- Shared pipeline: The boolean selects only candidate-pair generation. Both paths feed the same `overlapping_polygon_depths()`, ordering-edge construction, heap-based topological sort, stable-index tie breaking, and cycle fallback so comparisons isolate the broad-phase change.
+- Rollout: Instrument the unchanged all-pairs path first, then add sweep-and-prune without deleting or rewriting the baseline generator. Keep both implementations available for visual, differential, and performance evaluation. Make sweep-and-prune the constructor default only after both paths produce identical stable-index order and cycle state across representative fixtures and distributed-scene timings show a meaningful improvement; preserve the boolean escape hatch afterward and do not introduce a permanent face-count threshold without measurements.
+- Diagnostics: Per-sort metrics SHALL report total entries, eligible polygons, possible polygon pairs, x-active pairs, AABB candidates, exact tests, accepted graph edges, cycle state, duration, and selected candidate strategy. Metrics reset for each sort and do not change the public renderer API unless later profiling demonstrates a need to expose them.
+- Alternatives considered:
+  - Uniform screen-space grid: deferred because it requires cell-size policy, inserts large polygons into multiple cells, and requires pair deduplication. Reconsider only if sweep active-list costs dominate measured workloads.
+  - Cached AABB rejection inside the existing nested loop: useful as an intermediate measurement step, but insufficient as the final candidate generator because it still enumerates every unordered pair.
+  - Cython or another compiled kernel: deferred until the pure-Python algorithm is correct and profiling identifies remaining numeric hot spots.
+
 ### Mesh rendering strategy
 - Decision: `TriangleMesh3D` and `TetrahedralMesh3D` are retained scene objects that emit triangle packets efficiently. They do NOT enter the pairwise overlap sorter without spatial acceleration or a documented face-count limit.
 - Rationale: O(n²) pairwise overlap is unsuitable for thousands of triangles.
@@ -92,7 +106,9 @@ DearCyGui provides `DrawInWindow`, `DrawingList`, `DrawPolygon`, `DrawLine`, `Dr
 ## Risks / Trade-offs
 
 - **Subclass feasibility** — DCG extension types may not support Python subclassing cleanly. Mitigation: Phase 0 spike before any other work.
-- **Overlap sorter scalability** — Pairwise comparison is O(n²). Mitigation: Document face-count guidance; mesh objects use separate ordering or spatial acceleration.
+- **Overlap sorter scalability** — Sweep-and-prune reduces candidate work for spatially distributed polygons but remains O(n²) when most projected AABBs overlap. Mitigation: report candidate and exact-test counts, retain `AverageDepthSorter` as the explicit approximate option, and use Milestone 5.5 profiling before selecting further acceleration.
+- **Broad-phase false negatives** — Incorrect bounds, boundary comparisons, or eligibility filtering could omit a real ordering edge. Mitigation: derive AABBs from final projected points, keep touching bounds as candidates, and require all-pairs differential tests over clipped, degenerate, cyclic, and randomized geometry.
+- **Comparison-path drift** — Maintaining two candidate generators can allow the baseline and accelerated paths to diverge outside the intended broad-phase behavior. Mitigation: share all exact testing and graph-ordering code, limit the boolean branch to candidate generation, and run both paths through the same differential fixtures.
 - **Translucent ordering artifacts** — Alpha-blended faces produce incorrect results when constraints cycle. Mitigation: Explicit approximate-preview designation; no correctness guarantee.
 - **API surface creep** — Large design risks premature abstraction. Mitigation: Phase-gated extraction; each phase has a working demo before proceeding.
 - **Texture clipping fallback** — UV-aware clipping deferred; clipped textured quads show solid fill. Mitigation: Acceptable visual degradation documented in the material contract.
