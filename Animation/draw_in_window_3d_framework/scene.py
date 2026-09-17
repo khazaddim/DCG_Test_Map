@@ -631,6 +631,7 @@ class OverlapDepthSorter:
     def sort(self, entries: Iterable[ProjectedRenderEntry], frame: FrameContext | None = None) -> SortResult:
         ordered_entries = tuple(entries)
         if frame is None:
+            self.last_sort_stats = None
             return AverageDepthSorter().sort(ordered_entries)
 
         start_time = perf_counter()

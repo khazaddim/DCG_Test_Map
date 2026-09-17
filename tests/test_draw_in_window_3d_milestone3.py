@@ -3,9 +3,12 @@ from __future__ import annotations
 import importlib.util
 import math
 from pathlib import Path
+import random
 import sys
+from typing import Callable
 
 import dearcygui as dcg
+import pytest
 
 from Animation.draw_in_window_3d_framework import (
     AabbFootprint,
@@ -163,6 +166,41 @@ def make_projected_entry(
     )
 
 
+def make_bounds_entry(stable_index: int, bounds: tuple[float, float, float, float]) -> ProjectedRenderEntry:
+    min_x, min_y, max_x, max_y = bounds
+    return make_projected_entry(
+        stable_index=stable_index,
+        points=((min_x, min_y), (max_x, min_y), (max_x, max_y), (min_x, max_y)),
+    )
+
+
+def independent_closed_bounds_pairs(entries: tuple[ProjectedRenderEntry, ...]) -> tuple[tuple[int, int], ...]:
+    eligible = [
+        (index, entry)
+        for index, entry in enumerate(entries)
+        if entry.kind == "polygon" and len(entry.points) >= 3
+    ]
+    pairs: list[tuple[int, int]] = []
+    for first_offset, (first_index, first) in enumerate(eligible):
+        first_min_x = min(point[0] for point in first.points)
+        first_max_x = max(point[0] for point in first.points)
+        first_min_y = min(point[1] for point in first.points)
+        first_max_y = max(point[1] for point in first.points)
+        for second_index, second in eligible[first_offset + 1 :]:
+            second_min_x = min(point[0] for point in second.points)
+            second_max_x = max(point[0] for point in second.points)
+            second_min_y = min(point[1] for point in second.points)
+            second_max_y = max(point[1] for point in second.points)
+            if (
+                first_max_x >= second_min_x
+                and second_max_x >= first_min_x
+                and first_max_y >= second_min_y
+                and second_max_y >= first_min_y
+            ):
+                pairs.append((first_index, second_index))
+    return tuple(pairs)
+
+
 def make_camera_space_polygon_entry(
     frame: FrameContext,
     stable_index: int,
@@ -176,6 +214,43 @@ def make_camera_space_polygon_entry(
         camera_points=camera_points,
         material=SolidMaterial(fill=(160, 120, 80)),
     )
+
+
+def make_screen_plane_entry(
+    frame: FrameContext,
+    stable_index: int,
+    points: tuple[tuple[float, float], ...],
+    inverse_depth: float | Callable[[float, float], float],
+) -> ProjectedRenderEntry:
+    focal_length = frame.camera.focal_length(frame.viewport)
+    center_x, center_y = frame.viewport.center
+    camera_points = tuple(
+        (
+            (screen_x - center_x) * (1.0 / depth_at_point) / focal_length,
+            (screen_y - center_y) * (1.0 / depth_at_point) / focal_length,
+            1.0 / depth_at_point,
+        )
+        for screen_x, screen_y in points
+        for depth_at_point in (inverse_depth(screen_x, screen_y) if callable(inverse_depth) else inverse_depth,)
+    )
+    return make_camera_space_polygon_entry(frame, stable_index, camera_points)
+
+
+def assert_sorter_strategies_agree(entries: tuple[ProjectedRenderEntry, ...], frame: FrameContext) -> None:
+    all_pairs = OverlapDepthSorter(use_sweep_and_prune=False).sort(entries, frame)
+    sweep = OverlapDepthSorter(use_sweep_and_prune=True).sort(entries, frame)
+    assert all_pairs.sort_stats is not None
+    assert sweep.sort_stats is not None
+    assert [entry.stable_index for entry in sweep.entries] == [entry.stable_index for entry in all_pairs.entries]
+    assert sweep.cycle_detected is all_pairs.cycle_detected
+    assert sweep.sort_stats.accepted_edge_count == all_pairs.sort_stats.accepted_edge_count
+
+    all_edge_pairs = set()
+    for first_index, second_index in scene_module._all_pairs_candidate_pairs(entries)[0]:
+        depths = scene_module.overlapping_polygon_depths(entries[first_index], entries[second_index], frame)
+        if depths is not None and abs(depths[0] - depths[1]) > 1e-5:
+            all_edge_pairs.add((first_index, second_index))
+    assert all_edge_pairs <= set(scene_module._sweep_candidate_pairs(entries)[0])
 
 
 def make_camera_space_line_entry(
@@ -470,6 +545,48 @@ def test_sweep_candidate_generation_is_deterministic_and_keeps_touching_aabbs() 
     assert metrics.bounds_candidate_pair_count == 2
 
 
+@pytest.mark.parametrize(
+    ("bounds", "expected_pairs", "expected_x_active"),
+    [
+        ((), (), 0),
+        (((0.0, 0.0, 10.0, 10.0),), (), 0),
+        (((0.0, 0.0, 10.0, 10.0), (11.0, 0.0, 21.0, 10.0)), (), 0),
+        (((0.0, 0.0, 10.0, 10.0), (0.0, 11.0, 10.0, 21.0)), (), 1),
+        (((0.0, 0.0, 10.0, 10.0), (5.0, 5.0, 15.0, 15.0)), ((0, 1),), 1),
+        (((0.0, 0.0, 10.0, 10.0), (10.0, 10.0, 20.0, 20.0)), ((0, 1),), 1),
+        (((0.0, 0.0, 10.0, 10.0), (0.0, 0.0, 10.0, 10.0), (0.0, 0.0, 10.0, 10.0)), ((0, 1), (0, 2), (1, 2)), 3),
+        (((4.0, 0.0, 14.0, 10.0), (0.0, 0.0, 10.0, 10.0), (2.0, 0.0, 12.0, 10.0)), ((1, 2), (0, 1), (0, 2)), 3),
+    ],
+)
+def test_sweep_candidate_matrix_matches_independent_closed_bounds_oracle(
+    bounds: tuple[tuple[float, float, float, float], ...],
+    expected_pairs: tuple[tuple[int, int], ...],
+    expected_x_active: int,
+) -> None:
+    entries = tuple(make_bounds_entry(41 - index * 7, rectangle) for index, rectangle in enumerate(bounds))
+
+    pairs, metrics, _bounds = scene_module._sweep_candidate_pairs(entries)
+
+    assert pairs == expected_pairs
+    assert set(pairs) == set(independent_closed_bounds_pairs(entries))
+    assert all(first < second for first, second in pairs)
+    assert len(pairs) == len(set(pairs))
+    assert metrics.x_active_pair_count == expected_x_active
+    assert metrics.bounds_candidate_pair_count == len(expected_pairs)
+
+
+def test_sweep_candidate_generation_retains_nextafter_touching_boundaries() -> None:
+    base = (0.0, 0.0, 10.0, 10.0)
+    for separated_coordinate, expected_pairs in (
+        (math.nextafter(10.0, math.inf), ()),
+        (math.nextafter(10.0, -math.inf), ((0, 1),)),
+    ):
+        x_entries = (make_bounds_entry(0, base), make_bounds_entry(1, (separated_coordinate, 0.0, 20.0, 10.0)))
+        y_entries = (make_bounds_entry(0, base), make_bounds_entry(1, (0.0, separated_coordinate, 10.0, 20.0)))
+        assert scene_module._sweep_candidate_pairs(x_entries)[0] == expected_pairs
+        assert scene_module._sweep_candidate_pairs(y_entries)[0] == expected_pairs
+
+
 def test_sweep_sorter_recomputes_bounds_per_frame_and_tracks_exact_tests(monkeypatch) -> None:
     sorter = OverlapDepthSorter(use_sweep_and_prune=True)
     frame = make_sort_frame()
@@ -544,6 +661,88 @@ def test_overlap_sorter_selector_chooses_candidate_strategy_and_preserves_frame_
     assert [entry.stable_index for entry in fallback_true.entries] == [1, 0]
     assert fallback_false.cycle_detected is False
     assert fallback_true.cycle_detected is False
+
+
+@pytest.mark.parametrize("use_sweep_and_prune", (False, True))
+def test_overlap_sorter_fallback_clears_statistics_after_frame_backed_sort(use_sweep_and_prune: bool) -> None:
+    sorter = OverlapDepthSorter(use_sweep_and_prune=use_sweep_and_prune)
+    frame = make_sort_frame()
+    entries = (
+        make_flat_polygon(stable_index=7, depth=50.0, average_depth=10.0),
+        make_flat_polygon(stable_index=3, depth=60.0, average_depth=10.0),
+    )
+
+    frame_result = sorter.sort(entries, frame)
+    assert frame_result.sort_stats is sorter.last_sort_stats
+    fallback_result = sorter.sort(iter(entries), None)
+
+    assert fallback_result.sort_stats is None
+    assert sorter.last_sort_stats is None
+    assert fallback_result.cycle_detected is False
+    assert [entry.stable_index for entry in fallback_result.entries] == [3, 7]
+
+
+def test_overlap_sorter_strategies_match_distributed_projected_faces_and_mixed_entries() -> None:
+    frame = make_sort_frame()
+    entries: list[ProjectedRenderEntry] = [
+        make_projected_entry(stable_index=99, kind="line", points=((0.0, 0.0), (1.0, 1.0))),
+        make_projected_entry(stable_index=98, points=((1.0, 1.0), (2.0, 2.0))),
+    ]
+    for cell_x in (20.0, 100.0):
+        for offset, depth in enumerate((80.0, 100.0, 120.0, 140.0)):
+            dx, dy = ((0.0, 0.0), (6.0, 0.0), (0.0, 6.0), (6.0, 6.0))[offset]
+            entries.append(
+                make_screen_plane_entry(
+                    frame,
+                    41 - offset - int(cell_x),
+                    ((cell_x + dx, 20.0 + dy), (cell_x + dx + 24.0, 20.0 + dy), (cell_x + dx + 24.0, 44.0 + dy), (cell_x + dx, 44.0 + dy)),
+                    1.0 / depth,
+                )
+            )
+
+    assert_sorter_strategies_agree(tuple(entries), frame)
+
+
+def test_overlap_sorter_strategies_match_real_geometric_cycle_fallback() -> None:
+    frame = make_sort_frame()
+    entries = (
+        make_screen_plane_entry(frame, 41, ((40.0, 40.0), (160.0, 40.0), (160.0, 60.0), (40.0, 60.0)), 0.01),
+        make_screen_plane_entry(frame, 7, ((140.0, 40.0), (160.0, 40.0), (160.0, 160.0), (140.0, 160.0)), lambda _x, y: 0.01 + 0.00001 * (100.0 - y)),
+        make_screen_plane_entry(frame, 23, ((40.0, 50.0), (50.0, 40.0), (160.0, 150.0), (150.0, 160.0)), lambda x, _y: 0.01 + 0.00001 * (x - 100.0)),
+        make_screen_plane_entry(frame, 3, ((70.0, 70.0), (90.0, 70.0), (90.0, 90.0), (70.0, 90.0)), 0.004),
+    )
+
+    all_pairs = OverlapDepthSorter().sort(entries, frame)
+    sweep = OverlapDepthSorter(use_sweep_and_prune=True).sort(entries, frame)
+    expected = [entry.stable_index for entry in scene_module.AverageDepthSorter().sort(entries).entries]
+
+    assert all_pairs.cycle_detected is True
+    assert sweep.cycle_detected is True
+    assert [entry.stable_index for entry in all_pairs.entries] == expected
+    assert [entry.stable_index for entry in sweep.entries] == expected
+
+
+@pytest.mark.parametrize("seed,count", ((54010, 8), (54012, 32), (54013, 64)))
+def test_overlap_sorter_strategies_match_deterministic_convex_face_permutations(seed: int, count: int) -> None:
+    frame = make_sort_frame()
+    generator = random.Random(seed)
+    entries: list[ProjectedRenderEntry] = []
+    for index in range(count):
+        center_x = 50.0 + (index % 8) * 18.0 + generator.uniform(-2.0, 2.0)
+        center_y = 50.0 + (index // 8) * 18.0 + generator.uniform(-2.0, 2.0)
+        radius = generator.uniform(4.0, 9.0)
+        sides = 3 + index % 4
+        points = tuple(
+            (
+                center_x + radius * math.cos(2.0 * math.pi * point_index / sides),
+                center_y + radius * math.sin(2.0 * math.pi * point_index / sides),
+            )
+            for point_index in range(sides)
+        )
+        entries.append(make_screen_plane_entry(frame, 1000 - index * 11, points, 1.0 / (80.0 + index)))
+
+    for permutation in (entries, list(reversed(entries)), generator.sample(entries, len(entries))):
+        assert_sorter_strategies_agree(tuple(permutation), frame)
 
 
 def test_line_occlusion_splits_partially_hidden_grid_line() -> None:

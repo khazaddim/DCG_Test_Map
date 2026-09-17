@@ -29,7 +29,7 @@ from Animation.draw_in_window_3d_framework import (
 COLLISION_OPTIONS = ("enabled", "disabled")
 SORTER_OPTIONS = ("overlap", "average")
 COLLISION_GAP = 2.0
-USE_SWEEP_AND_PRUNE = False
+USE_SWEEP_AND_PRUNE = True
 
 
 def load_demo_11():
