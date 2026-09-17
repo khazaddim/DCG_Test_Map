@@ -20,7 +20,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from Animation.draw_in_window_3d_framework import Camera3D, DrawInWindow3D, EdgeBandFollowController
+from Animation.draw_in_window_3d_framework import Camera3D, CpuRenderer3D, DrawInWindow3D, EdgeBandFollowController, OverlapDepthSorter
 import Animation.ported_demos.town_hot_reload_world as world
 
 
@@ -32,6 +32,7 @@ ZOOM_MIN = 0.75
 ZOOM_MAX = 16.0
 ZOOM_DEFAULT = 3.5
 CONTROLS_HEIGHT = 250.0
+USE_SWEEP_AND_PRUNE = True
 
 
 class HotReloadTownController:
@@ -175,6 +176,9 @@ def build_ui(context: dcg.Context) -> HotReloadTownController:
         pitch_deg=52.0,
         zoom=ZOOM_DEFAULT,
     )
+    renderer = CpuRenderer3D(
+        sorter=OverlapDepthSorter(use_sweep_and_prune=USE_SWEEP_AND_PRUNE)
+    )
 
     with dcg.Window(context, label="Town hot-reload experiment", width="fillx", height="filly", primary=True) as window:
         with dcg.VerticalLayout(context, parent=window) as content:
@@ -193,6 +197,7 @@ def build_ui(context: dcg.Context) -> HotReloadTownController:
                     height="filly",
                     scene=scene,
                     camera=initial_camera,
+                    renderer=renderer,
                 )
 
             with dcg.ChildWindow(
