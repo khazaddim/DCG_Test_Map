@@ -145,6 +145,7 @@
 - **5.4F Default Flip Decision** (`GPT-6 Astra`): Task 5.4.15. Treat the default switch as an evidence-backed review step after correctness and performance gates pass, while retaining the all-pairs rollback path and documenting the measured outcome.
 
 ### Suggested Workflow
+- Fixture handoff for the remaining work: follow [Milestone 5.4 fixture implementation handoff](design.md#milestone-54-fixture-implementation-handoff). It defines candidate and differential oracles, geometry recipes, benchmark protocol, and predeclared default-decision gates. Terra should implement the fixtures and report evidence; this design does not mark the remaining tasks complete or authorize an unconditional default flip.
 - Run 5.4A through 5.4C as one continuous `GPT-5.4` implementation thread so sorter invariants stay consistent across instrumentation, sweep generation, and the shared pipeline refactor.
 - Use `GPT-6 Astra` after 5.4C to review the abstraction boundary and design the strongest differential and performance test matrices before relying on benchmark conclusions or changing defaults.
 - Use `GPT-5.6 Terra` only after the benchmark methodology is defined, focusing it on fixture generation, report plumbing, and repetitive measurement scaffolding rather than the correctness-critical sorter changes.
