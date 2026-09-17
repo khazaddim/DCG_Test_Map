@@ -133,21 +133,21 @@
 - [x] 5.19 Write integration test: no tetrahedron represented as individual scene object
 - [x] 5.20 Create demo 15 with buildings using varied mesh-based roof shapes
 
-## Milestone 5.25: Terrain Surface Queries and Hill Traversal
-- [ ] 5.25.1 Define a terrain-query abstraction that can return surface height and optional surface normal for a world-space `x,y` position
-- [ ] 5.25.2 Add a mesh-backed terrain implementation for traversable hill surfaces built from supported triangle meshes
-- [ ] 5.25.3 Add a widget or camera query method that resolves screen positions against a traversable terrain surface instead of only a flat `ground_z` plane
-- [ ] 5.25.4 Implement terrain-following player anchoring so actor `z` can be derived from the active terrain surface during movement
-- [ ] 5.25.5 Extend movement/controller logic to support slope-aware traversal on uneven terrain while preserving current flat-ground behavior as a simple mode
-- [ ] 5.25.6 Define the first terrain-aware collision/traversal contract, including explicit traversable-versus-boundary roles, out-of-bounds handling, and steep-slope rejection policy
-- [ ] 5.25.6.1 Define the initial traversal-role vocabulary and default behavior for legacy flat-ground colliders
-- [ ] 5.25.6.2 Ensure boundary-marked objects preserve the existing collision-blocking semantics used by current demos
-- [ ] 5.25.6.3 Ensure traversable-marked terrain surfaces can provide support height without acting as blockers by default
-- [ ] 5.25.7 Create a focused demo showing a player traversing mesh-generated hills without requiring any new render primitive
-- [ ] 5.25.8 Write unit tests for terrain height queries, triangle selection, and slope-policy edge cases
-- [ ] 5.25.9 Write integration tests covering terrain-following movement, screen-to-surface queries, and camera follow on uneven terrain
 
 ## Milestone 5.4: Screen-Space Sweep-and-Prune with Cached AABBs
+
+### Recommended Implementation Sub-milestones and Model Assignments
+- **5.4A Instrumentation and Bounds Foundation** (`GPT-5.4`): Tasks 5.4.1-5.4.3. Add all-pairs instrumentation without changing sorter behavior, add immutable per-entry screen-space AABBs for eligible polygons only, and lock down eligibility and frame-local recomputation with focused unit tests.
+- **5.4B Sweep Candidate Generator** (`GPT-5.4`): Tasks 5.4.4-5.4.6. Implement deterministic x-axis sweep ordering by `(min_x, entry_index)`, strict x-pruning, y-interval rejection, touching-box retention, canonical unique pair emission, and matching candidate/exact-test counters.
+- **5.4C Shared Pipeline Refactor and Selector** (`GPT-5.4` implementation, `GPT-6 Astra` review): Tasks 5.4.7-5.4.9 and 5.4.11. Extract candidate generation from the current sorter loop while preserving the existing all-pairs path, route both strategies through one shared exact-test and ordering pipeline, add the startup selector and demo toggle, and prove `frame is None` fallback remains unchanged.
+- **5.4D Candidate Tests and Equivalence Matrix** (`GPT-6 Astra`): Tasks 5.4.10 and 5.4.12. Design and review the compact but discriminating test matrix for deterministic candidate generation, touching AABBs, clipped polygons, billboards, equal-depth ties, cycles, and deterministic randomized convex polygons.
+- **5.4E Performance Fixtures and Evaluation** (`GPT-6 Astra` design/review, `GPT-5.6 Terra` implementation support): Tasks 5.4.13-5.4.14. Have Astra define representative distributed and dense fixture methodology plus acceptance criteria, then use Terra for the more mechanical fixture/report plumbing and counter reporting.
+- **5.4F Default Flip Decision** (`GPT-6 Astra`): Task 5.4.15. Treat the default switch as an evidence-backed review step after correctness and performance gates pass, while retaining the all-pairs rollback path and documenting the measured outcome.
+
+### Suggested Workflow
+- Run 5.4A through 5.4C as one continuous `GPT-5.4` implementation thread so sorter invariants stay consistent across instrumentation, sweep generation, and the shared pipeline refactor.
+- Use `GPT-6 Astra` after 5.4C to review the abstraction boundary and design the strongest differential and performance test matrices before relying on benchmark conclusions or changing defaults.
+- Use `GPT-5.6 Terra` only after the benchmark methodology is defined, focusing it on fixture generation, report plumbing, and repetitive measurement scaffolding rather than the correctness-critical sorter changes.
 - [ ] 5.4.1 Add per-sort instrumentation to the unchanged all-pairs `OverlapDepthSorter`: total entries, eligible polygons, possible polygon pairs, exact tests, accepted graph edges, cycle state, duration, and `all_pairs` strategy label
 - [ ] 5.4.2 Add a private immutable screen-bounds representation and compute one AABB per eligible projected polygon from final screen-space points; exclude non-polygons and entries with fewer than three points
 - [ ] 5.4.3 Add unit tests for AABB calculation, polygon eligibility, degenerate-entry exclusion, and frame-local bounds recomputation
@@ -163,6 +163,20 @@
 - [ ] 5.4.13 Add focused performance fixtures at 32, 64, 128, 256, and 512 polygons for distributed and dense scenes, reporting median and 95th-percentile duration with every pair counter for both boolean settings
 - [ ] 5.4.14 Verify distributed fixtures materially reduce exact tests and improve target-scene yaw/pitch sort latency while dense fixtures document the remaining O(n²) worst case
 - [ ] 5.4.15 Make sweep-and-prune the constructor default only after correctness and performance gates pass; retain the all-pairs implementation and startup boolean as a rollback and comparison path, and document the measured result
+
+## Milestone 5.25: Terrain Surface Queries and Hill Traversal
+- [ ] 5.25.1 Define a terrain-query abstraction that can return surface height and optional surface normal for a world-space `x,y` position
+- [ ] 5.25.2 Add a mesh-backed terrain implementation for traversable hill surfaces built from supported triangle meshes
+- [ ] 5.25.3 Add a widget or camera query method that resolves screen positions against a traversable terrain surface instead of only a flat `ground_z` plane
+- [ ] 5.25.4 Implement terrain-following player anchoring so actor `z` can be derived from the active terrain surface during movement
+- [ ] 5.25.5 Extend movement/controller logic to support slope-aware traversal on uneven terrain while preserving current flat-ground behavior as a simple mode
+- [ ] 5.25.6 Define the first terrain-aware collision/traversal contract, including explicit traversable-versus-boundary roles, out-of-bounds handling, and steep-slope rejection policy
+- [ ] 5.25.6.1 Define the initial traversal-role vocabulary and default behavior for legacy flat-ground colliders
+- [ ] 5.25.6.2 Ensure boundary-marked objects preserve the existing collision-blocking semantics used by current demos
+- [ ] 5.25.6.3 Ensure traversable-marked terrain surfaces can provide support height without acting as blockers by default
+- [ ] 5.25.7 Create a focused demo showing a player traversing mesh-generated hills without requiring any new render primitive
+- [ ] 5.25.8 Write unit tests for terrain height queries, triangle selection, and slope-policy edge cases
+- [ ] 5.25.9 Write integration tests covering terrain-following movement, screen-to-surface queries, and camera follow on uneven terrain
 
 ## Milestone 5.5: Performance Profiling Fixtures
 - [ ] 5.5.1 Ensure each pipeline stage (projection/clipping, broad-phase, overlap tests, topological sort, DCG node creation) is a separate callable boundary
