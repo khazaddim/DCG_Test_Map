@@ -148,15 +148,15 @@
 - Run 5.4A through 5.4C as one continuous `GPT-5.4` implementation thread so sorter invariants stay consistent across instrumentation, sweep generation, and the shared pipeline refactor.
 - Use `GPT-6 Astra` after 5.4C to review the abstraction boundary and design the strongest differential and performance test matrices before relying on benchmark conclusions or changing defaults.
 - Use `GPT-5.6 Terra` only after the benchmark methodology is defined, focusing it on fixture generation, report plumbing, and repetitive measurement scaffolding rather than the correctness-critical sorter changes.
-- [ ] 5.4.1 Add per-sort instrumentation to the unchanged all-pairs `OverlapDepthSorter`: total entries, eligible polygons, possible polygon pairs, exact tests, accepted graph edges, cycle state, duration, and `all_pairs` strategy label
-- [ ] 5.4.2 Add a private immutable screen-bounds representation and compute one AABB per eligible projected polygon from final screen-space points; exclude non-polygons and entries with fewer than three points
-- [ ] 5.4.3 Add unit tests for AABB calculation, polygon eligibility, degenerate-entry exclusion, and frame-local bounds recomputation
-- [ ] 5.4.4 Implement deterministic x-axis sweep candidate generation ordered by `(min_x, entry_index)`, with an active list pruned using strict x separation
-- [ ] 5.4.5 Add the y-interval rejection step, retain touching AABBs as candidates, and emit each surviving pair once in canonical index order
-- [ ] 5.4.6 Record x-active pair and AABB-candidate counts and label the accelerated strategy `sweep_and_prune`; ensure exact-test count matches the number of emitted candidates
-- [ ] 5.4.7 Extract candidate-pair generation from the current sorter loop without changing the existing all-pairs implementation, then route both all-pairs and sweep candidates through one shared exact-test, ordering-edge, topological-sort, stable-tie, and cycle-fallback pipeline
-- [ ] 5.4.8 Add `OverlapDepthSorter(use_sweep_and_prune: bool = False)` as a startup-time selector between the preserved all-pairs generator and the new sweep generator; keep the branch limited to candidate generation
-- [ ] 5.4.9 Add a top-level `USE_SWEEP_AND_PRUNE` boolean to the target diagnostic or town demo and pass it when constructing `OverlapDepthSorter`, allowing the strategy to be changed before program launch without adding runtime UI state
+- [x] 5.4.1 Add per-sort instrumentation to the unchanged all-pairs `OverlapDepthSorter`: total entries, eligible polygons, possible polygon pairs, exact tests, accepted graph edges, cycle state, duration, and `all_pairs` strategy label
+- [x] 5.4.2 Add a private immutable screen-bounds representation and compute one AABB per eligible projected polygon from final screen-space points; exclude non-polygons and entries with fewer than three points
+- [x] 5.4.3 Add unit tests for AABB calculation, polygon eligibility, degenerate-entry exclusion, and frame-local bounds recomputation
+- [x] 5.4.4 Implement deterministic x-axis sweep candidate generation ordered by `(min_x, entry_index)`, with an active list pruned using strict x separation
+- [x] 5.4.5 Add the y-interval rejection step, retain touching AABBs as candidates, and emit each surviving pair once in canonical index order
+- [x] 5.4.6 Record x-active pair and AABB-candidate counts and label the accelerated strategy `sweep_and_prune`; ensure exact-test count matches the number of emitted candidates
+- [x] 5.4.7 Extract candidate-pair generation from the current sorter loop without changing the existing all-pairs implementation, then route both all-pairs and sweep candidates through one shared exact-test, ordering-edge, topological-sort, stable-tie, and cycle-fallback pipeline
+- [x] 5.4.8 Add `OverlapDepthSorter(use_sweep_and_prune: bool = False)` as a startup-time selector between the preserved all-pairs generator and the new sweep generator; keep the branch limited to candidate generation
+- [x] 5.4.9 Add a top-level `USE_SWEEP_AND_PRUNE` boolean to the target diagnostic or town demo and pass it when constructing `OverlapDepthSorter`, allowing the strategy to be changed before program launch without adding runtime UI state
 - [ ] 5.4.10 Write candidate-generation unit tests for x-separated, y-separated, overlapping, touching, equal-`min_x`, and three-way-overlap AABBs, including uniqueness and deterministic order
 - [ ] 5.4.11 Write selector tests proving `False` uses all-pairs and `True` uses sweep-and-prune while both preserve the `frame is None` average-depth fallback
 - [ ] 5.4.12 Write differential tests proving all-pairs and sweep-and-prune return identical stable-index order and cycle state for distributed boxes, houses/towers, billboards, clipped polygons, coplanar/equal-depth faces, cycles, and deterministic randomized convex polygons

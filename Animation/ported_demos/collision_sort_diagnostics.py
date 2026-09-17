@@ -29,6 +29,7 @@ from Animation.draw_in_window_3d_framework import (
 COLLISION_OPTIONS = ("enabled", "disabled")
 SORTER_OPTIONS = ("overlap", "average")
 COLLISION_GAP = 2.0
+USE_SWEEP_AND_PRUNE = False
 
 
 def load_demo_11():
@@ -49,7 +50,7 @@ def build_sorter(mode: str):
     normalized = str(mode).strip().lower()
     if normalized == "average":
         return AverageDepthSorter()
-    return OverlapDepthSorter()
+    return OverlapDepthSorter(use_sweep_and_prune=USE_SWEEP_AND_PRUNE)
 
 
 def footprint_for(box: Box3D) -> AabbFootprint:

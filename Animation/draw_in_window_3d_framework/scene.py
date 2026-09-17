@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from enum import Enum
 import heapq
+from time import perf_counter
 from typing import Any, Callable, Iterable, Literal, Protocol, Sequence, TypeAlias, runtime_checkable
 
 from .math3d import DEFAULT_LIGHT_DIRECTION, Camera3D, Color, Vec2, Vec3, Viewport, cross, dot, subtract
@@ -291,6 +292,21 @@ class Scene3D:
 class SortResult:
     entries: tuple[ProjectedRenderEntry, ...]
     cycle_detected: bool = False
+    sort_stats: SortStats | None = None
+
+
+@dataclass(frozen=True)
+class SortStats:
+    sort_entry_count: int
+    polygon_entry_count: int
+    possible_polygon_pair_count: int
+    x_active_pair_count: int
+    bounds_candidate_pair_count: int
+    exact_test_count: int
+    accepted_edge_count: int
+    cycle_detected: bool
+    sort_duration_seconds: float
+    candidate_strategy: str
 
 
 @dataclass(frozen=True)
@@ -300,6 +316,7 @@ class RenderStats:
     projected_count: int
     emitted_count: int
     cycle_detected: bool = False
+    sort_stats: SortStats | None = None
 
 
 class RenderSorter(Protocol):
@@ -457,6 +474,136 @@ def overlapping_polygon_depths(
     return first_depth, second_depth
 
 
+@dataclass(frozen=True)
+class _ProjectedBounds:
+    min_x: float
+    min_y: float
+    max_x: float
+    max_y: float
+
+
+@dataclass(frozen=True)
+class _CandidatePairMetrics:
+    x_active_pair_count: int
+    bounds_candidate_pair_count: int
+
+
+def _polygon_entry_indices(entries: Sequence[ProjectedRenderEntry]) -> tuple[int, ...]:
+    return tuple(
+        index
+        for index, entry in enumerate(entries)
+        if entry.kind == "polygon" and len(entry.points) >= 3
+    )
+
+
+def _screen_bounds(points: Sequence[Vec2]) -> _ProjectedBounds:
+    return _ProjectedBounds(
+        min_x=min(point[0] for point in points),
+        min_y=min(point[1] for point in points),
+        max_x=max(point[0] for point in points),
+        max_y=max(point[1] for point in points),
+    )
+
+
+def _entry_screen_bounds(entries: Sequence[ProjectedRenderEntry]) -> dict[int, _ProjectedBounds]:
+    return {
+        index: _screen_bounds(entries[index].points)
+        for index in _polygon_entry_indices(entries)
+    }
+
+
+def _bounds_overlap(first: _ProjectedBounds, second: _ProjectedBounds) -> bool:
+    if first.max_x < second.min_x or second.max_x < first.min_x:
+        return False
+    if first.max_y < second.min_y or second.max_y < first.min_y:
+        return False
+    return True
+
+
+def _all_pairs_candidate_pairs(
+    entries: Sequence[ProjectedRenderEntry],
+) -> tuple[tuple[tuple[int, int], ...], _CandidatePairMetrics, dict[int, _ProjectedBounds]]:
+    polygon_indices = _polygon_entry_indices(entries)
+    bounds_by_index = _entry_screen_bounds(entries)
+    candidate_pairs = tuple(
+        (polygon_indices[first_offset], polygon_indices[second_offset])
+        for first_offset in range(len(polygon_indices))
+        for second_offset in range(first_offset + 1, len(polygon_indices))
+    )
+    pair_count = len(candidate_pairs)
+    return (
+        candidate_pairs,
+        _CandidatePairMetrics(
+            x_active_pair_count=pair_count,
+            bounds_candidate_pair_count=pair_count,
+        ),
+        bounds_by_index,
+    )
+
+
+def _sweep_candidate_pairs(
+    entries: Sequence[ProjectedRenderEntry],
+) -> tuple[tuple[tuple[int, int], ...], _CandidatePairMetrics, dict[int, _ProjectedBounds]]:
+    bounds_by_index = _entry_screen_bounds(entries)
+    sweep_order = sorted(
+        bounds_by_index,
+        key=lambda index: (bounds_by_index[index].min_x, index),
+    )
+
+    active: list[int] = []
+    candidate_pairs: list[tuple[int, int]] = []
+    x_active_pair_count = 0
+    for current_index in sweep_order:
+        current_bounds = bounds_by_index[current_index]
+        active = [
+            other_index
+            for other_index in active
+            if bounds_by_index[other_index].max_x >= current_bounds.min_x
+        ]
+        x_active_pair_count += len(active)
+        for other_index in active:
+            other_bounds = bounds_by_index[other_index]
+            if not _bounds_overlap(current_bounds, other_bounds):
+                continue
+            candidate_pairs.append((min(other_index, current_index), max(other_index, current_index)))
+        active.append(current_index)
+
+    return (
+        tuple(candidate_pairs),
+        _CandidatePairMetrics(
+            x_active_pair_count=x_active_pair_count,
+            bounds_candidate_pair_count=len(candidate_pairs),
+        ),
+        bounds_by_index,
+    )
+
+
+def _sort_stats(
+    entries: Sequence[ProjectedRenderEntry],
+    *,
+    bounds_by_index: dict[int, _ProjectedBounds],
+    candidate_metrics: _CandidatePairMetrics,
+    exact_test_count: int,
+    accepted_edge_count: int,
+    cycle_detected: bool,
+    sort_duration_seconds: float,
+    candidate_strategy: str,
+) -> SortStats:
+    polygon_entry_count = len(bounds_by_index)
+    return SortStats(
+        sort_entry_count=len(entries),
+        polygon_entry_count=polygon_entry_count,
+        possible_polygon_pair_count=polygon_entry_count * (polygon_entry_count - 1) // 2,
+        x_active_pair_count=candidate_metrics.x_active_pair_count,
+        bounds_candidate_pair_count=candidate_metrics.bounds_candidate_pair_count,
+        exact_test_count=exact_test_count,
+        accepted_edge_count=accepted_edge_count,
+        cycle_detected=cycle_detected,
+        sort_duration_seconds=sort_duration_seconds,
+        candidate_strategy=candidate_strategy,
+    )
+
+
 class AverageDepthSorter:
     def sort(self, entries: Iterable[ProjectedRenderEntry], frame: FrameContext | None = None) -> SortResult:
         ordered = tuple(
@@ -474,33 +621,47 @@ class OverlapDepthSorter:
         *,
         overlap_area_epsilon: float = 0.25,
         depth_epsilon: float = 1e-5,
+        use_sweep_and_prune: bool = False,
     ) -> None:
         self.overlap_area_epsilon = overlap_area_epsilon
         self.depth_epsilon = depth_epsilon
+        self.use_sweep_and_prune = use_sweep_and_prune
+        self.last_sort_stats: SortStats | None = None
 
     def sort(self, entries: Iterable[ProjectedRenderEntry], frame: FrameContext | None = None) -> SortResult:
         ordered_entries = tuple(entries)
         if frame is None:
             return AverageDepthSorter().sort(ordered_entries)
 
+        start_time = perf_counter()
+        candidate_strategy = "sweep_and_prune" if self.use_sweep_and_prune else "all_pairs"
+        candidate_pairs, candidate_metrics, bounds_by_index = (
+            _sweep_candidate_pairs(ordered_entries)
+            if self.use_sweep_and_prune
+            else _all_pairs_candidate_pairs(ordered_entries)
+        )
+
         entry_count = len(ordered_entries)
         successors: list[set[int]] = [set() for _ in ordered_entries]
         indegree = [0] * entry_count
-        for first_index in range(entry_count):
-            for second_index in range(first_index + 1, entry_count):
-                depths = overlapping_polygon_depths(
-                    ordered_entries[first_index],
-                    ordered_entries[second_index],
-                    frame,
-                    overlap_area_epsilon=self.overlap_area_epsilon,
-                )
-                if depths is None or abs(depths[0] - depths[1]) <= self.depth_epsilon:
-                    continue
-                farther = first_index if depths[0] > depths[1] else second_index
-                nearer = second_index if farther == first_index else first_index
-                if nearer not in successors[farther]:
-                    successors[farther].add(nearer)
-                    indegree[nearer] += 1
+        exact_test_count = 0
+        accepted_edge_count = 0
+        for first_index, second_index in candidate_pairs:
+            exact_test_count += 1
+            depths = overlapping_polygon_depths(
+                ordered_entries[first_index],
+                ordered_entries[second_index],
+                frame,
+                overlap_area_epsilon=self.overlap_area_epsilon,
+            )
+            if depths is None or abs(depths[0] - depths[1]) <= self.depth_epsilon:
+                continue
+            farther = first_index if depths[0] > depths[1] else second_index
+            nearer = second_index if farther == first_index else first_index
+            if nearer not in successors[farther]:
+                successors[farther].add(nearer)
+                indegree[nearer] += 1
+                accepted_edge_count += 1
 
         ready: list[tuple[float, int, int]] = []
         for index, entry in enumerate(ordered_entries):
@@ -517,10 +678,34 @@ class OverlapDepthSorter:
                     entry = ordered_entries[successor]
                     heapq.heappush(ready, (-entry.average_depth, entry.stable_index, successor))
 
-        if len(ordered_indices) != entry_count:
+        cycle_detected = len(ordered_indices) != entry_count
+        if cycle_detected:
             fallback = AverageDepthSorter().sort(ordered_entries).entries
-            return SortResult(entries=fallback, cycle_detected=True)
+            sort_stats = _sort_stats(
+                ordered_entries,
+                bounds_by_index=bounds_by_index,
+                candidate_metrics=candidate_metrics,
+                exact_test_count=exact_test_count,
+                accepted_edge_count=accepted_edge_count,
+                cycle_detected=True,
+                sort_duration_seconds=perf_counter() - start_time,
+                candidate_strategy=candidate_strategy,
+            )
+            self.last_sort_stats = sort_stats
+            return SortResult(entries=fallback, cycle_detected=True, sort_stats=sort_stats)
+        sort_stats = _sort_stats(
+            ordered_entries,
+            bounds_by_index=bounds_by_index,
+            candidate_metrics=candidate_metrics,
+            exact_test_count=exact_test_count,
+            accepted_edge_count=accepted_edge_count,
+            cycle_detected=False,
+            sort_duration_seconds=perf_counter() - start_time,
+            candidate_strategy=candidate_strategy,
+        )
+        self.last_sort_stats = sort_stats
         return SortResult(
             entries=tuple(ordered_entries[index] for index in ordered_indices),
             cycle_detected=False,
+            sort_stats=sort_stats,
         )

@@ -147,6 +147,22 @@ def make_flat_polygon(stable_index: int, depth: float, average_depth: float | No
     )
 
 
+def make_projected_entry(
+    *,
+    stable_index: int,
+    kind: str = "polygon",
+    points: tuple[tuple[float, float], ...],
+    average_depth: float = 100.0,
+) -> ProjectedRenderEntry:
+    return ProjectedRenderEntry(
+        kind=kind,
+        stable_index=stable_index,
+        average_depth=average_depth,
+        points=points,
+        camera_points=tuple((point[0], point[1], average_depth) for point in points),
+    )
+
+
 def make_camera_space_polygon_entry(
     frame: FrameContext,
     stable_index: int,
@@ -414,6 +430,122 @@ def test_overlap_depth_sorter_reports_cycles_and_uses_average_depth_fallback(mon
     assert [entry.stable_index for entry in ordered.entries] == [0, 1, 2]
 
 
+def test_screen_bounds_calculates_immutable_aabb_from_polygon_points() -> None:
+    bounds = scene_module._screen_bounds(((5.0, 7.0), (-1.0, 2.0), (9.0, -3.0), (4.0, 6.0)))
+
+    assert scene_module._ProjectedBounds.__dataclass_params__.frozen is True
+    assert bounds.min_x == -1.0
+    assert bounds.min_y == -3.0
+    assert bounds.max_x == 9.0
+    assert bounds.max_y == 7.0
+
+
+def test_entry_screen_bounds_excludes_non_polygons_and_degenerate_entries() -> None:
+    entries = (
+        make_projected_entry(stable_index=0, points=((0.0, 0.0), (10.0, 0.0), (10.0, 10.0), (0.0, 10.0))),
+        make_projected_entry(stable_index=1, points=((20.0, 0.0), (30.0, 0.0)), average_depth=90.0),
+        make_projected_entry(stable_index=2, kind="line", points=((0.0, 0.0), (10.0, 10.0)), average_depth=80.0),
+        make_projected_entry(stable_index=3, points=((40.0, 10.0), (60.0, 10.0), (60.0, 30.0), (40.0, 30.0)), average_depth=70.0),
+    )
+
+    bounds = scene_module._entry_screen_bounds(entries)
+
+    assert set(bounds) == {0, 3}
+    assert bounds[0] == scene_module._ProjectedBounds(0.0, 0.0, 10.0, 10.0)
+    assert bounds[3] == scene_module._ProjectedBounds(40.0, 10.0, 60.0, 30.0)
+
+
+def test_sweep_candidate_generation_is_deterministic_and_keeps_touching_aabbs() -> None:
+    entries = (
+        make_projected_entry(stable_index=0, points=((0.0, 0.0), (10.0, 0.0), (10.0, 10.0), (0.0, 10.0))),
+        make_projected_entry(stable_index=1, points=((10.0, 4.0), (18.0, 4.0), (18.0, 12.0), (10.0, 12.0))),
+        make_projected_entry(stable_index=2, points=((0.0, 30.0), (10.0, 30.0), (10.0, 40.0), (0.0, 40.0))),
+        make_projected_entry(stable_index=3, points=((4.0, 3.0), (8.0, 3.0), (8.0, 8.0), (4.0, 8.0))),
+    )
+
+    pairs, metrics, _bounds = scene_module._sweep_candidate_pairs(entries)
+
+    assert pairs == ((0, 3), (0, 1))
+    assert metrics.x_active_pair_count == 5
+    assert metrics.bounds_candidate_pair_count == 2
+
+
+def test_sweep_sorter_recomputes_bounds_per_frame_and_tracks_exact_tests(monkeypatch) -> None:
+    sorter = OverlapDepthSorter(use_sweep_and_prune=True)
+    frame = make_sort_frame()
+    exact_pairs: list[tuple[int, int]] = []
+
+    def record_depths(first, second, frame, overlap_area_epsilon=0.25):
+        exact_pairs.append((first.stable_index, second.stable_index))
+        return None
+
+    monkeypatch.setattr(scene_module, "overlapping_polygon_depths", record_depths)
+
+    separated_entries = (
+        make_projected_entry(stable_index=0, points=((0.0, 0.0), (10.0, 0.0), (10.0, 10.0), (0.0, 10.0))),
+        make_projected_entry(stable_index=1, points=((30.0, 0.0), (40.0, 0.0), (40.0, 10.0), (30.0, 10.0))),
+    )
+    overlapping_entries = (
+        make_projected_entry(stable_index=0, points=((0.0, 0.0), (10.0, 0.0), (10.0, 10.0), (0.0, 10.0))),
+        make_projected_entry(stable_index=1, points=((8.0, 0.0), (18.0, 0.0), (18.0, 10.0), (8.0, 10.0))),
+    )
+
+    first_result = sorter.sort(separated_entries, frame)
+    second_result = sorter.sort(overlapping_entries, frame)
+
+    assert first_result.sort_stats is not None
+    assert first_result.sort_stats.bounds_candidate_pair_count == 0
+    assert first_result.sort_stats.exact_test_count == 0
+    assert second_result.sort_stats is not None
+    assert second_result.sort_stats.bounds_candidate_pair_count == 1
+    assert second_result.sort_stats.exact_test_count == 1
+    assert second_result.sort_stats.candidate_strategy == "sweep_and_prune"
+    assert exact_pairs == [(0, 1)]
+
+
+def test_overlap_sorter_selector_chooses_candidate_strategy_and_preserves_frame_none_fallback(monkeypatch) -> None:
+    entries = [
+        make_flat_polygon(stable_index=0, depth=50.0, average_depth=10.0),
+        make_flat_polygon(stable_index=1, depth=60.0, average_depth=20.0),
+    ]
+    frame = make_sort_frame()
+    calls: list[str] = []
+    bounds = {0: scene_module._screen_bounds(entries[0].points), 1: scene_module._screen_bounds(entries[1].points)}
+    metrics = scene_module._CandidatePairMetrics(x_active_pair_count=1, bounds_candidate_pair_count=1)
+
+    def fake_all_pairs(_entries):
+        calls.append("all_pairs")
+        return ((0, 1),), metrics, bounds
+
+    def fake_sweep(_entries):
+        calls.append("sweep")
+        return ((0, 1),), metrics, bounds
+
+    monkeypatch.setattr(scene_module, "_all_pairs_candidate_pairs", fake_all_pairs)
+    monkeypatch.setattr(scene_module, "_sweep_candidate_pairs", fake_sweep)
+    monkeypatch.setattr(scene_module, "overlapping_polygon_depths", lambda *args, **kwargs: None)
+
+    all_pairs_result = OverlapDepthSorter(use_sweep_and_prune=False).sort(entries, frame)
+    sweep_result = OverlapDepthSorter(use_sweep_and_prune=True).sort(entries, frame)
+
+    assert calls == ["all_pairs", "sweep"]
+    assert all_pairs_result.sort_stats is not None
+    assert all_pairs_result.sort_stats.candidate_strategy == "all_pairs"
+    assert sweep_result.sort_stats is not None
+    assert sweep_result.sort_stats.candidate_strategy == "sweep_and_prune"
+
+    monkeypatch.setattr(scene_module, "_all_pairs_candidate_pairs", lambda *_args: (_ for _ in ()).throw(AssertionError("all-pairs helper should not run without a frame")))
+    monkeypatch.setattr(scene_module, "_sweep_candidate_pairs", lambda *_args: (_ for _ in ()).throw(AssertionError("sweep helper should not run without a frame")))
+
+    fallback_false = OverlapDepthSorter(use_sweep_and_prune=False).sort(entries, None)
+    fallback_true = OverlapDepthSorter(use_sweep_and_prune=True).sort(entries, None)
+
+    assert [entry.stable_index for entry in fallback_false.entries] == [1, 0]
+    assert [entry.stable_index for entry in fallback_true.entries] == [1, 0]
+    assert fallback_false.cycle_detected is False
+    assert fallback_true.cycle_detected is False
+
+
 def test_line_occlusion_splits_partially_hidden_grid_line() -> None:
     frame = make_sort_frame()
     face = make_camera_space_polygon_entry(
@@ -557,3 +689,13 @@ def test_collision_sort_example_status_surfaces_cycle_fallback() -> None:
     assert "sort=overlap" in status
     assert "blocked by=building 2" in status
     assert "occlusion cycle fallback" in status
+
+
+def test_collision_sort_example_uses_startup_sweep_toggle(monkeypatch) -> None:
+    example = load_collision_sort_example()
+
+    monkeypatch.setattr(example, "USE_SWEEP_AND_PRUNE", True)
+    sorter = example.build_sorter("overlap")
+
+    assert isinstance(sorter, OverlapDepthSorter)
+    assert sorter.use_sweep_and_prune is True

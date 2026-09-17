@@ -207,6 +207,7 @@ class CpuRenderer3D:
             projected_count=len(projected_entries),
             emitted_count=emitted_count,
             cycle_detected=sorted_result.cycle_detected,
+            sort_stats=sorted_result.sort_stats,
         )
 
     def _collect_packets(
