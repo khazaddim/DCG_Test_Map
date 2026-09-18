@@ -46,6 +46,47 @@ Do not put a world-editable texture generator or material builder in the host.
 Otherwise saving the world file and pressing Reload will rebuild the scene with
 an unchanged host-owned resource, making the edit appear to have had no effect.
 
+## Event-Loop-Safe Redraws
+
+`DrawInWindow3D.render_now()` rebuilds projection, ordering, line occlusion,
+and retained DearCyGui draw nodes. Do not call it from high-frequency input
+callbacks such as sliders, resize handlers, or repeated movement handlers.
+Doing so blocks DearCyGui's input dispatch: a second camera operation can move
+its slider while its callback waits behind the previous synchronous rebuild.
+
+Callbacks should mutate state and invalidate the viewport only:
+
+```python
+def set_yaw(self, sender, *_: object) -> None:
+  self.viewport.set_camera(replace(self.viewport.camera, yaw_deg=float(sender.value)))
+
+def on_resize(self, *_: object) -> None:
+  self.viewport.invalidate()
+```
+
+The persistent host renders at most once per event-loop frame, after callbacks
+have applied the newest state:
+
+```python
+controller = build_ui(context)
+while context.running:
+  controller.render_if_needed()
+  context.viewport.render_frame()
+```
+
+```python
+def render_if_needed(self) -> None:
+  stats = self.viewport.render_if_needed()
+  if stats is not None:
+    self._update_status()
+```
+
+This coalesces rapid camera updates into one retained-frame rebuild and keeps
+the UI responsive. Use `render_now()` only for an explicit synchronous action
+whose caller genuinely needs the newly rendered result immediately. Reference:
+`Animation/ported_demos/town_hot_reload.py` and
+`Animation/ported_demos/14_dearcygui_cpu_3d_trees.py`.
+
 ## Reload Pattern
 
 1. The host imports the world module.
