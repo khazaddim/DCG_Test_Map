@@ -60,7 +60,6 @@ class HotReloadTownController:
 
     def on_resize(self, *_: object) -> None:
         self.viewport.invalidate()
-        self.viewport.render_now()
 
     def move_left(self, *_: object) -> None:
         self._move(-self.world_module.GRID_STEP, 0.0)
@@ -130,7 +129,6 @@ class HotReloadTownController:
         self.avatar.center = next_center
         self.follow.update(next_center)
         self.viewport.invalidate()
-        self.viewport.render_now()
         self._update_status()
 
     def _configure_follow(self) -> None:
@@ -153,16 +151,30 @@ class HotReloadTownController:
 
     def _set_camera(self, **changes: object) -> None:
         self.viewport.set_camera(replace(self.viewport.camera, **changes))
-        self.viewport.render_now()
         self._update_status()
+
+    def render_if_needed(self) -> None:
+        stats = self.viewport.render_if_needed()
+        if stats is not None:
+            self._update_status()
 
     def _update_status(self) -> None:
         camera = self.viewport.camera
+        sort_stats = self.viewport.last_render_stats.sort_stats
+        sort_status = "sort=average-depth"
+        if sort_stats is not None:
+            sort_status = (
+                f"sort={sort_stats.candidate_strategy} "
+                f"{sort_stats.sort_duration_seconds * 1000.0:.1f}ms "
+                f"pairs={sort_stats.bounds_candidate_pair_count} "
+                f"exact={sort_stats.exact_test_count}"
+            )
         self.status.value = (
             f"avatar=({self.avatar.center[0]:.0f}, {self.avatar.center[1]:.0f})   "
             f"target=({camera.target[0]:.0f}, {camera.target[1]:.0f})   "
             f"pitch={camera.pitch_deg:.1f} deg   yaw={camera.yaw_deg:.1f} deg   "
-            f"zoom={camera.zoom:.2f}x   world={self.world_module.WORLD_W:.0f} x {self.world_module.WORLD_H:.0f}"
+            f"zoom={camera.zoom:.2f}x   world={self.world_module.WORLD_W:.0f} x {self.world_module.WORLD_H:.0f}   "
+            f"{sort_status}"
         )
 
 
@@ -261,8 +273,9 @@ def main() -> None:
         width=VIEW_W + 80,
         height=VIEW_H + 340,
     )
-    build_ui(context)
+    controller = build_ui(context)
     while context.running:
+        controller.render_if_needed()
         context.viewport.render_frame()
 
 
