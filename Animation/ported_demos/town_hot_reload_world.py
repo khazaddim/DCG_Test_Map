@@ -8,6 +8,10 @@ import dearcygui as dcg
 
 from Animation.draw_in_window_3d_framework import (
     AabbFootprint,
+    AnimatedImageMaterial,
+    AnimationProjection,
+    Billboard3D,
+    BillboardFacing,
     Box3D,
     CollisionWorld,
     GroundPlane3D,
@@ -37,6 +41,8 @@ ROAD_TEXTURE_ENABLED = False
 POSITION_LABELS_ENABLED = False
 HILL_ENABLED = True
 BOULDER_ENABLED = True
+TOWER_ENABLED = True
+ARCH_ENABLED = True
 COLLISION_GAP = 2.0
 
 SKY_COLOR = (23, 29, 34)
@@ -55,6 +61,7 @@ HOUSE_WALL_MATERIAL = SolidMaterial(fill=(146, 154, 150), outline=(54, 62, 66), 
 GABLE_ROOF_MATERIAL = SolidMaterial(fill=(178, 76, 54), outline=(74, 43, 36), thickness=-1.0)
 HIP_ROOF_MATERIAL = SolidMaterial(fill=(67, 112, 139), outline=(27, 50, 65), thickness=-1.0)
 ROOF_EDGES = MeshEdgeStyle(color=(34, 38, 40, 155), thickness=-1.0)
+ARCH_MATERIAL = SolidMaterial(fill=(184, 164, 126), outline=(92, 76, 56), thickness=-1.0, shaded=True)
 HOUSE_SPECS = (
     ((35.0, 30.0), (20.0, 18.0), 12.0, "gable"),
     ((115.0, 48.0), (18.0, 22.0), 14.0, "hip"),
@@ -64,6 +71,22 @@ BOULDER_CENTER = (96.0, 75.0)
 BOULDER_SIZE = (2.0, 3.5)
 BOULDER_HEIGHT = 4.5
 BOULDER_COLLISION_SCALE = 0.7
+ARCH_Y = 75.0
+ARCH_PILLAR_WIDTH = 5.0
+ARCH_PILLAR_DEPTH = 4.0
+ARCH_PILLAR_HEIGHT = 20.0
+TOWER_CENTER = (100.0, 125.0)
+TOWER_SIZE = (18.0, 18.0)
+TOWER_HEIGHT = 34.0
+TOWER_ROOF_HEIGHT = 9.0
+TOWER_SIDES = 10
+WINDMILL_FRAME_COUNT = 12
+WINDMILL_LOOP_SECONDS = 2.4
+WINDMILL_BITMAP_SIZE = 96
+WINDMILL_WORLD_SIZE = (18.0, 18.0)
+TOWER_WALL_MATERIAL = SolidMaterial(fill=(112, 126, 137), outline=(43, 52, 58), thickness=-1.0, shaded=True)
+TOWER_ROOF_MATERIAL = SolidMaterial(fill=(92, 58, 48), outline=(52, 35, 30), thickness=-1.0, shaded=True)
+_WINDMILL_TEXTURES: tuple[dcg.Texture, ...] = ()
 
 
 def add_gable_house(scene: Scene3D, center: tuple[float, float], size: tuple[float, float], height: float) -> None:
@@ -96,6 +119,152 @@ def add_hip_house(scene: Scene3D, center: tuple[float, float], size: tuple[float
             edges=ROOF_EDGES,
         )
     )
+
+
+def add_tower(scene: Scene3D, center: tuple[float, float], size: tuple[float, float], height: float, roof_height: float) -> None:
+    width, depth = size
+    radius_x, radius_y = width * 0.5, depth * 0.5
+    angles = tuple(2.0 * math.pi * index / TOWER_SIDES for index in range(TOWER_SIDES))
+    bottom_ring = tuple(
+        (center[0] + radius_x * math.cos(angle), center[1] + radius_y * math.sin(angle), 0.0)
+        for angle in angles
+    )
+    top_ring = tuple((x, y, height) for x, y, _z in bottom_ring)
+    side_triangles = []
+    for index in range(TOWER_SIDES):
+        next_index = (index + 1) % TOWER_SIDES
+        side_triangles.extend(
+            (
+                (index, next_index, TOWER_SIDES + next_index),
+                (index, TOWER_SIDES + next_index, TOWER_SIDES + index),
+            )
+        )
+    scene.add(
+        TriangleMesh3D(
+            vertices=bottom_ring + top_ring,
+            triangles=tuple(side_triangles),
+            material=TOWER_WALL_MATERIAL,
+            edges=ROOF_EDGES,
+            cull_back_faces=False,
+        )
+    )
+    roof_apex_index = TOWER_SIDES
+    scene.add(
+        TriangleMesh3D(
+            vertices=top_ring + ((center[0], center[1], height + roof_height),),
+            triangles=tuple(
+                (index, (index + 1) % TOWER_SIDES, roof_apex_index)
+                for index in range(TOWER_SIDES)
+            ),
+            material=TOWER_ROOF_MATERIAL,
+            edges=ROOF_EDGES,
+            cull_back_faces=False,
+        )
+    )
+
+
+def add_arch(scene: Scene3D) -> None:
+    """Add a shallow extruded arch over the road."""
+    front_y = ARCH_Y - 4.0
+    back_y = ARCH_Y + 4.0
+    outer = ((58.0, 20.0), (58.0, 32.0), (92.0, 32.0), (92.0, 20.0))
+    inner = ((63.0, 20.0), (69.0, 27.0), (81.0, 27.0), (87.0, 20.0))
+    vertices = []
+    triangles = []
+
+    def add_face(corners: tuple[tuple[float, float], ...], y: float, reverse: bool = False) -> None:
+        start = len(vertices)
+        face = tuple(reversed(corners)) if reverse else corners
+        vertices.extend((x, y, z) for x, z in face)
+        triangles.extend(((start, start + 1, start + 2), (start, start + 2, start + 3)))
+
+    def add_depth_face(start_point: tuple[float, float], end_point: tuple[float, float]) -> None:
+        start = len(vertices)
+        vertices.extend(
+            (
+                (start_point[0], front_y, start_point[1]),
+                (end_point[0], front_y, end_point[1]),
+                (end_point[0], back_y, end_point[1]),
+                (start_point[0], back_y, start_point[1]),
+            )
+        )
+        triangles.extend(((start, start + 1, start + 2), (start, start + 2, start + 3)))
+
+    sections = [
+        ((58.0, 0.0), (63.0, 0.0), (63.0, 20.0), (58.0, 20.0)),
+        ((87.0, 0.0), (92.0, 0.0), (92.0, 20.0), (87.0, 20.0)),
+    ]
+    for index in range(4):
+        if index < 3:
+            sections.append((outer[index], outer[index + 1], inner[index + 1], inner[index]))
+    for section in sections:
+        add_face(section, front_y)
+        add_face(section, back_y, reverse=True)
+    for start_point, end_point in (
+        ((58.0, 0.0), (58.0, 20.0)),
+        ((58.0, 20.0), (58.0, 32.0)),
+        ((58.0, 32.0), (92.0, 32.0)),
+        ((92.0, 32.0), (92.0, 20.0)),
+        ((92.0, 20.0), (92.0, 0.0)),
+        ((63.0, 0.0), (63.0, 20.0)),
+        ((63.0, 20.0), (69.0, 27.0)),
+        ((69.0, 27.0), (81.0, 27.0)),
+        ((81.0, 27.0), (87.0, 20.0)),
+        ((87.0, 20.0), (87.0, 0.0)),
+        ((58.0, 0.0), (63.0, 0.0)),
+        ((87.0, 0.0), (92.0, 0.0)),
+    ):
+        add_depth_face(start_point, end_point)
+    top_start = len(vertices)
+    vertices.extend(
+        (
+            (58.0, front_y, 32.0),
+            (92.0, front_y, 32.0),
+            (92.0, back_y, 32.0),
+            (58.0, back_y, 32.0),
+        )
+    )
+    triangles.extend(((top_start, top_start + 1, top_start + 2), (top_start, top_start + 2, top_start + 3)))
+    scene.add(
+        TriangleMesh3D(
+            vertices=tuple(vertices),
+            triangles=tuple(triangles),
+            material=ARCH_MATERIAL,
+            cull_back_faces=False,
+        )
+    )
+
+
+def create_windmill_textures(context: dcg.Context) -> tuple[dcg.Texture, ...]:
+    global _WINDMILL_TEXTURES
+    textures = []
+    center = (WINDMILL_BITMAP_SIZE - 1) * 0.5
+    for frame_index in range(WINDMILL_FRAME_COUNT):
+        phase = frame_index * 2.0 * math.pi / WINDMILL_FRAME_COUNT
+        pixels = bytearray(WINDMILL_BITMAP_SIZE * WINDMILL_BITMAP_SIZE * 4)
+        for y in range(WINDMILL_BITMAP_SIZE):
+            for x in range(WINDMILL_BITMAP_SIZE):
+                dx, dy = x - center, y - center
+                color = None
+                for blade_index in range(4):
+                    angle = phase + blade_index * math.pi * 0.5
+                    along = dx * math.cos(angle) + dy * math.sin(angle)
+                    across = abs(-dx * math.sin(angle) + dy * math.cos(angle))
+                    blade_width = 3.8 - max(0.0, along - 9.0) * 0.035
+                    if 7.0 <= along <= 39.0 and across <= blade_width:
+                        color = (224, 190, 92, 255)
+                        break
+                if dx * dx + dy * dy <= 7.0 * 7.0:
+                    color = (74, 57, 43, 255)
+                if color is not None:
+                    offset = (y * WINDMILL_BITMAP_SIZE + x) * 4
+                    pixels[offset:offset + 4] = bytes(color)
+        texture = dcg.Texture(context)
+        texture.nearest_neighbor_upsampling = True
+        texture.set_value(memoryview(pixels).cast("B", shape=(WINDMILL_BITMAP_SIZE, WINDMILL_BITMAP_SIZE, 4)))
+        textures.append(texture)
+    _WINDMILL_TEXTURES = tuple(textures)
+    return _WINDMILL_TEXTURES
 
 
 def add_boulder(scene: Scene3D, center: tuple[float, float], size: tuple[float, float], height: float) -> None:
@@ -173,6 +342,17 @@ def build_collision_world() -> CollisionWorld:
                 BOULDER_SIZE[1] * 2.0 * BOULDER_COLLISION_SCALE,
             ),
         )
+    if TOWER_ENABLED:
+        collisions.add("tower", AabbFootprint.from_center(TOWER_CENTER[0], TOWER_CENTER[1], TOWER_SIZE[0], TOWER_SIZE[1]))
+    if ARCH_ENABLED:
+        collisions.add(
+            "arch left pillar",
+            AabbFootprint.from_center(60.5, ARCH_Y, ARCH_PILLAR_WIDTH, ARCH_PILLAR_DEPTH),
+        )
+        collisions.add(
+            "arch right pillar",
+            AabbFootprint.from_center(89.5, ARCH_Y, ARCH_PILLAR_WIDTH, ARCH_PILLAR_DEPTH),
+        )
     return collisions
 
 
@@ -243,6 +423,7 @@ def add_rolling_hill(
 
 
 def create_road_texture(context: dcg.Context) -> dcg.Texture | None:
+    create_windmill_textures(context)
     if not ROAD_TEXTURE_ENABLED:
         return None
     width, height = ROAD_TEXTURE_SIZE
@@ -324,6 +505,24 @@ def build_scene(road_texture: object | None = None) -> tuple[Scene3D, Box3D]:
             add_gable_house(scene, center, size, height)
         else:
             add_hip_house(scene, center, size, height)
+    if ARCH_ENABLED:
+        add_arch(scene)
+    if TOWER_ENABLED:
+        add_tower(scene, center=TOWER_CENTER, size=TOWER_SIZE, height=TOWER_HEIGHT, roof_height=TOWER_ROOF_HEIGHT)
+        if _WINDMILL_TEXTURES:
+            scene.add(
+                Billboard3D(
+                    anchor=(TOWER_CENTER[0], TOWER_CENTER[1], TOWER_HEIGHT + TOWER_ROOF_HEIGHT - 2.0),
+                    world_size=WINDMILL_WORLD_SIZE,
+                    facing=BillboardFacing.CAMERA_YAW,
+                    material=AnimatedImageMaterial(
+                        frames=_WINDMILL_TEXTURES,
+                        loop_seconds=WINDMILL_LOOP_SECONDS,
+                        projection_policy=AnimationProjection.OCCLUDABLE_WORLD,
+                        tessellation=1,
+                    ),
+                )
+            )
     if BOULDER_ENABLED:
         add_boulder(scene, center=BOULDER_CENTER, size=BOULDER_SIZE, height=BOULDER_HEIGHT)
     if HILL_ENABLED:
