@@ -53,8 +53,12 @@ class HotReloadTownController:
         self.road_texture = road_texture
         self.world_module = world_module
         self.collisions = collisions
+        self.terrain = world_module.build_terrain_surface()
+        self.traversal_settings = world_module.build_traversal_settings()
         self.status = status
         self.reload_status = reload_status
+        self.viewport.terrain = self.terrain
+        self._anchor_avatar_to_support()
         self._configure_follow()
         self._update_status()
 
@@ -104,30 +108,36 @@ class HotReloadTownController:
         self.avatar = candidate_avatar
         self.road_texture = candidate_texture
         self.collisions = candidate_collisions
+        self.terrain = candidate_module.build_terrain_surface()
+        self.traversal_settings = candidate_module.build_traversal_settings()
+        self.viewport.terrain = self.terrain
+        self._anchor_avatar_to_support()
         self._configure_follow()
         self._set_camera(target=self._clamped_target(self.viewport.camera.target))
         self.reload_status.value = "Reloaded world definition."
 
     def _move(self, dx: float, dy: float) -> None:
         half_size = self.world_module.AVATAR_SIZE * 0.5
-        next_center = (
+        candidate_xy = (
             max(half_size, min(self.world_module.WORLD_W - half_size, self.avatar.center[0] + dx)),
             max(half_size, min(self.world_module.WORLD_H - half_size, self.avatar.center[1] + dy)),
-            self.avatar.center[2],
         )
-        blocker = self.collisions.first_blocker(
+        resolution = self.collisions.resolve_movement(
             self.world_module.AabbFootprint.from_center(
-                next_center[0],
-                next_center[1],
+                candidate_xy[0],
+                candidate_xy[1],
                 self.world_module.AVATAR_SIZE,
                 self.world_module.AVATAR_SIZE,
-            )
+            ),
+            x=candidate_xy[0],
+            y=candidate_xy[1],
+            settings=self.traversal_settings,
         )
-        if blocker is not None:
+        if not resolution.accepted:
             self._update_status()
             return
-        self.avatar.center = next_center
-        self.follow.update(next_center)
+        self.avatar.center = resolution.position
+        self.follow.update(resolution.position)
         self.viewport.invalidate()
         self._update_status()
 
@@ -137,10 +147,16 @@ class HotReloadTownController:
             band_x=self.viewport.viewport.width * 0.2,
             band_y=self.viewport.viewport.height * 0.2,
             world_bounds=(0.0, 0.0, self.world_module.WORLD_W, self.world_module.WORLD_H),
+            terrain=self.terrain,
         )
 
     def _world_center(self) -> tuple[float, float, float]:
-        return self.world_module.WORLD_W * 0.5, self.world_module.WORLD_H * 0.5, 0.0
+        support = self.collisions.support_sample(self.avatar.center[0], self.avatar.center[1])
+        return (
+            self.world_module.WORLD_W * 0.5,
+            self.world_module.WORLD_H * 0.5,
+            0.0 if support is None else support.height,
+        )
 
     def _clamped_target(self, target: tuple[float, float, float]) -> tuple[float, float, float]:
         return (
@@ -152,6 +168,21 @@ class HotReloadTownController:
     def _set_camera(self, **changes: object) -> None:
         self.viewport.set_camera(replace(self.viewport.camera, **changes))
         self._update_status()
+
+    def _anchor_avatar_to_support(self) -> None:
+        resolution = self.collisions.resolve_movement(
+            self.world_module.AabbFootprint.from_center(
+                self.avatar.center[0],
+                self.avatar.center[1],
+                self.world_module.AVATAR_SIZE,
+                self.world_module.AVATAR_SIZE,
+            ),
+            x=self.avatar.center[0],
+            y=self.avatar.center[1],
+            settings=self.traversal_settings,
+        )
+        if resolution.accepted:
+            self.avatar.center = resolution.position
 
     def render_if_needed(self) -> None:
         stats = self.viewport.render_if_needed()
@@ -170,8 +201,8 @@ class HotReloadTownController:
                 f"exact={sort_stats.exact_test_count}"
             )
         self.status.value = (
-            f"avatar=({self.avatar.center[0]:.0f}, {self.avatar.center[1]:.0f})   "
-            f"target=({camera.target[0]:.0f}, {camera.target[1]:.0f})   "
+            f"avatar=({self.avatar.center[0]:.0f}, {self.avatar.center[1]:.0f}, {self.avatar.center[2]:.1f})   "
+            f"target=({camera.target[0]:.0f}, {camera.target[1]:.0f}, {camera.target[2]:.1f})   "
             f"pitch={camera.pitch_deg:.1f} deg   yaw={camera.yaw_deg:.1f} deg   "
             f"zoom={camera.zoom:.2f}x   world={self.world_module.WORLD_W:.0f} x {self.world_module.WORLD_H:.0f}   "
             f"{sort_status}"
@@ -182,8 +213,10 @@ def build_ui(context: dcg.Context) -> HotReloadTownController:
     road_texture = world.create_road_texture(context)
     scene, avatar = world.build_scene(road_texture)
     collisions = world.build_collision_world()
+    terrain = world.build_terrain_surface()
+    initial_target = avatar.center if terrain is None else (avatar.center[0], avatar.center[1], avatar.center[2])
     initial_camera = Camera3D(
-        target=avatar.center,
+        target=initial_target,
         yaw_deg=0.0,
         pitch_deg=52.0,
         zoom=ZOOM_DEFAULT,
@@ -210,6 +243,7 @@ def build_ui(context: dcg.Context) -> HotReloadTownController:
                     scene=scene,
                     camera=initial_camera,
                     renderer=renderer,
+                    terrain=terrain,
                 )
 
             with dcg.ChildWindow(

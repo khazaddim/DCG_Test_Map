@@ -107,6 +107,25 @@ class Camera3D:
         center_x, center_y = viewport.center
         return center_x + point[0] * scale, center_y + point[1] * scale
 
+    def ray_from_screen(self, screen: Vec2, viewport: Viewport) -> tuple[Vec3, Vec3]:
+        focal_length = self.focal_length(viewport)
+        center_x, center_y = viewport.center
+        normalized_x = (screen[0] - center_x) / focal_length
+        normalized_y = (screen[1] - center_y) / focal_length
+
+        yaw = math.radians(self.yaw_deg)
+        pitch = math.radians(self.pitch_deg)
+        cos_yaw = math.cos(yaw)
+        sin_yaw = math.sin(yaw)
+        cos_pitch = math.cos(pitch)
+        sin_pitch = math.sin(pitch)
+
+        rotated_y = cos_pitch * normalized_y - sin_pitch
+        world_z = -sin_pitch * normalized_y - cos_pitch
+        world_x = cos_yaw * normalized_x + sin_yaw * rotated_y
+        world_y = -sin_yaw * normalized_x + cos_yaw * rotated_y
+        return self.eye(viewport), normalized((world_x, world_y, world_z))
+
     def ground_from_screen(
         self,
         screen: Vec2,

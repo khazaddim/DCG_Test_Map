@@ -23,7 +23,19 @@ from .math3d import (
 	subtract,
 )
 from .objects import Box3D, GroundPlane3D, Line3D, MeshEdgeStyle, MeshTriangle, Polygon3D, Polyline3D, TetrahedralMesh3D, Text3D, TriangleMesh3D
-from .collision import AabbFootprint, Collider, CollisionShape2D, CollisionWorld
+from .collision import (
+	AabbFootprint,
+	Collider,
+	CollisionShape2D,
+	CollisionWorld,
+	OutOfBoundsPolicy,
+	TerrainMode,
+	TraversalRejectionReason,
+	TraversalResolution,
+	TraversalRole,
+	TraversalSettings,
+)
+from .terrain import MeshTerrainSurface, TerrainSample, TerrainSurface
 from .scene import (
 	AverageDepthSorter,
 	AnimatedImageMaterial,
@@ -64,6 +76,15 @@ __all__ = [
 	"CollisionWorld",
 	"Color",
 	"DEFAULT_LIGHT_DIRECTION",
+	"OutOfBoundsPolicy",
+	"TerrainMode",
+	"TerrainSample",
+	"TerrainSurface",
+	"MeshTerrainSurface",
+	"TraversalRejectionReason",
+	"TraversalResolution",
+	"TraversalRole",
+	"TraversalSettings",
 	"FrameContext",
 	"DrawStream3D",
 	"FieldAssociation",

@@ -19,11 +19,16 @@ from Animation.draw_in_window_3d_framework import (
     Line3D,
     LineRenderLayer,
     MeshEdgeStyle,
+    MeshTerrainSurface,
+    OutOfBoundsPolicy,
     Polyline3D,
     Scene3D,
     SolidMaterial,
+    TerrainMode,
     Text3D,
     TriangleMesh3D,
+    TraversalRole,
+    TraversalSettings,
 )
 
 
@@ -40,11 +45,16 @@ ROAD_TEXTURE_SIZE = (64, 512)
 ROAD_TEXTURE_ENABLED = False
 POSITION_LABELS_ENABLED = False
 HILL_ENABLED = True
+TERRAIN_FOLLOWING_ENABLED = True
 BOULDER_ENABLED = True
 TOWER_ENABLED = True
-ARCH_ENABLED = True
-FLOATING_ISLAND_ENABLED = True
+ARCH_ENABLED = False
+FLOATING_ISLAND_ENABLED = False
 COLLISION_GAP = 2.0
+HILL_CORNER = (150.0, 150.0)
+HILL_EXTENT = (30.0, 50.0)
+HILL_HEIGHT = 16.0
+HILL_MAX_SLOPE_DEGREES = 38.0
 
 SKY_COLOR = (23, 29, 34)
 GROUND_COLOR = (78, 116, 76)
@@ -112,6 +122,7 @@ FLOATING_ISLAND_TREE_SPECS = (
     (-2.0, -8.0, 6.0, 10.0, 3.7),
     (4.0, -3.0, 5.0, 9.0, 3.3),
 )
+AVATAR_START_XY = (126.0, 112.5)
 
 
 def add_gable_house(scene: Scene3D, center: tuple[float, float], size: tuple[float, float], height: float) -> None:
@@ -490,17 +501,53 @@ def build_collision_world() -> CollisionWorld:
             "arch right pillar",
             AabbFootprint.from_center(89.5, ARCH_Y, ARCH_PILLAR_WIDTH, ARCH_PILLAR_DEPTH),
         )
+    terrain = build_terrain_surface()
+    if terrain is not None:
+        collisions.add(
+            "hill terrain",
+            AabbFootprint(
+                HILL_CORNER[0] - HILL_EXTENT[0],
+                HILL_CORNER[1] - HILL_EXTENT[1],
+                HILL_CORNER[0],
+                HILL_CORNER[1],
+            ),
+            role=TraversalRole.TRAVERSABLE,
+            terrain=terrain,
+        )
     return collisions
 
 
-def add_rolling_hill(
-    scene: Scene3D,
+def build_traversal_settings() -> TraversalSettings:
+    if not TERRAIN_FOLLOWING_ENABLED:
+        return TraversalSettings(mode=TerrainMode.FLAT, fallback_ground_z=0.0)
+    return TraversalSettings(
+        mode=TerrainMode.FOLLOW_SURFACE,
+        fallback_ground_z=0.0,
+        max_slope_degrees=HILL_MAX_SLOPE_DEGREES,
+        out_of_bounds_policy=OutOfBoundsPolicy.USE_FALLBACK_GROUND,
+    )
+
+
+def build_terrain_surface() -> MeshTerrainSurface | None:
+    if not HILL_ENABLED:
+        return None
+    return MeshTerrainSurface.from_triangle_mesh(build_rolling_hill_mesh(HILL_CORNER, HILL_EXTENT, HILL_HEIGHT))
+
+
+def build_rolling_hill_mesh(
     corner: tuple[float, float],
     extent: tuple[float, float],
     height: float,
-) -> None:
-    # The extents control how far the hill falls off from the peak at the corner.
-    # Grid resolution follows the map's 5-unit cells automatically.
+) -> TriangleMesh3D:
+    vertices, triangles = generate_rolling_hill_geometry(corner, extent, height)
+    return TriangleMesh3D(vertices=vertices, triangles=triangles, material=HILL_MATERIAL, cull_back_faces=False)
+
+
+def generate_rolling_hill_geometry(
+    corner: tuple[float, float],
+    extent: tuple[float, float],
+    height: float,
+) -> tuple[tuple[tuple[float, float, float], ...], tuple[tuple[int, int, int], ...]]:
     x_divisions = int(extent[0] / GRID_STEP)
     y_divisions = int(extent[1] / GRID_STEP)
     vertices = []
@@ -511,7 +558,6 @@ def add_rolling_hill(
             x = corner[0] - extent[0] + extent[0] * column / x_divisions
             normalized_x = (corner[0] - x) / extent[0]
             distance = normalized_x * normalized_x + normalized_y * normalized_y
-            # Lower 3.5 for a broader, gentler hill; raise it for a tighter peak.
             vertices.append((x, y, height * math.exp(-3.5 * distance)))
 
     triangles = []
@@ -521,8 +567,20 @@ def add_rolling_hill(
             current = row * row_width + column
             next_row = current + row_width
             triangles.extend(((current, current + 1, next_row + 1), (current, next_row + 1, next_row)))
+    return tuple(vertices), tuple(triangles)
 
-    scene.add(TriangleMesh3D(vertices=tuple(vertices), triangles=tuple(triangles), material=HILL_MATERIAL, cull_back_faces=False))
+
+def add_rolling_hill(
+    scene: Scene3D,
+    corner: tuple[float, float],
+    extent: tuple[float, float],
+    height: float,
+) -> None:
+    vertices, triangles = generate_rolling_hill_geometry(corner, extent, height)
+    scene.add(TriangleMesh3D(vertices=vertices, triangles=triangles, material=HILL_MATERIAL, cull_back_faces=False))
+    x_divisions = int(extent[0] / GRID_STEP)
+    y_divisions = int(extent[1] / GRID_STEP)
+    row_width = x_divisions + 1
     for row in range(y_divisions + 1):
         for column in range(x_divisions):
             start_index = row * row_width + column
@@ -667,9 +725,9 @@ def build_scene(road_texture: object | None = None) -> tuple[Scene3D, Box3D]:
         # and height controls the peak elevation.
         add_rolling_hill(
             scene,
-            corner=(150.0, 150.0),
-            extent=(30.0, 50.0),
-            height=16.0,
+            corner=HILL_CORNER,
+            extent=HILL_EXTENT,
+            height=HILL_HEIGHT,
         )
     if FLOATING_ISLAND_ENABLED:
         add_floating_island(
@@ -736,7 +794,7 @@ def build_scene(road_texture: object | None = None) -> tuple[Scene3D, Box3D]:
     )
 
     avatar = Box3D(
-        center=(WORLD_W * 0.5, WORLD_H * 0.5, 0.0),
+        center=(AVATAR_START_XY[0], AVATAR_START_XY[1], 0.0),
         size=(AVATAR_SIZE, AVATAR_SIZE, AVATAR_HEIGHT),
         material=SolidMaterial(
             fill=(245, 194, 67),

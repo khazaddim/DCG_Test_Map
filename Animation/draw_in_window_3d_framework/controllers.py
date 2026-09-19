@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from .math3d import Camera3D, Vec3
+from .terrain import TerrainSurface
 
 
 @dataclass
@@ -14,9 +15,11 @@ class EdgeBandFollowController:
     band_y: float
     world_bounds: tuple[float, float, float, float] | None = None
     ground_z: float = 0.0
+    terrain: TerrainSurface | None = None
 
     def update(self, focus_point: Vec3) -> Camera3D:
-        screen = self.viewport.world_to_screen((focus_point[0], focus_point[1], self.ground_z))
+        focus_surface = focus_point if self.terrain is not None else (focus_point[0], focus_point[1], self.ground_z)
+        screen = self.viewport.world_to_screen(focus_surface)
         if screen is None:
             return self.viewport.camera
         current_viewport = self.viewport.viewport
@@ -26,16 +29,20 @@ class EdgeBandFollowController:
         )
         if target_screen == screen:
             return self.viewport.camera
-        target_ground = self.viewport.screen_to_ground(target_screen, ground_z=self.ground_z)
-        if target_ground is None:
+        target_surface = self.viewport.screen_to_surface(
+            target_screen,
+            terrain=self.terrain,
+            ground_z=self.ground_z if self.terrain is None else None,
+        )
+        if target_surface is None:
             return self.viewport.camera
         camera = self.viewport.camera
-        offset_x = target_ground[0] - camera.target[0]
-        offset_y = target_ground[1] - camera.target[1]
+        offset_x = target_surface[0] - camera.target[0]
+        offset_y = target_surface[1] - camera.target[1]
         next_target = (
-            focus_point[0] - offset_x,
-            focus_point[1] - offset_y,
-            camera.target[2],
+            focus_surface[0] - offset_x,
+            focus_surface[1] - offset_y,
+            focus_surface[2] if self.terrain is not None else camera.target[2],
         )
         if self.world_bounds is not None:
             x0, y0, x1, y1 = self.world_bounds

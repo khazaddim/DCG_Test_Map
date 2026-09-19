@@ -9,10 +9,12 @@ try:
     from .math3d import Camera3D, Viewport
     from .renderer import CpuRenderer3D
     from .scene import RenderStats, Scene3D
+    from .terrain import TerrainSurface
 except ImportError:
     from Animation.draw_in_window_3d_framework.math3d import Camera3D, Viewport
     from Animation.draw_in_window_3d_framework.renderer import CpuRenderer3D
     from Animation.draw_in_window_3d_framework.scene import RenderStats, Scene3D
+    from Animation.draw_in_window_3d_framework.terrain import TerrainSurface
 
 
 Point2: TypeAlias = tuple[float, float]
@@ -67,6 +69,7 @@ class DrawInWindow3D(dcg.DrawInWindow):
         scene: Scene3D | None = None,
         camera: Camera3D | None = None,
         renderer: CpuRenderer3D | None = None,
+        terrain: TerrainSurface | None = None,
         **kwargs,
     ) -> None:
         super().__init__(context, **kwargs)
@@ -76,6 +79,7 @@ class DrawInWindow3D(dcg.DrawInWindow):
         self.scene = scene or Scene3D()
         self.camera = camera or Camera3D(target=(0.0, 0.0, 0.0), yaw_deg=0.0, pitch_deg=52.0, zoom=1.0)
         self.renderer = renderer or CpuRenderer3D()
+        self.terrain = terrain
         self._dirty = True
         self.last_render_revision = 0
         self.last_render_stats = RenderStats(0, 0, 0, 0, False)
@@ -186,3 +190,20 @@ class DrawInWindow3D(dcg.DrawInWindow):
         ground_z: float = 0.0,
     ) -> tuple[float, float, float] | None:
         return self.camera.ground_from_screen(screen, self.viewport, ground_z=ground_z)
+
+    def screen_to_surface(
+        self,
+        screen: tuple[float, float],
+        *,
+        terrain: TerrainSurface | None = None,
+        ground_z: float | None = 0.0,
+    ) -> tuple[float, float, float] | None:
+        active_terrain = terrain if terrain is not None else self.terrain
+        if active_terrain is not None:
+            origin, direction = self.camera.ray_from_screen(screen, self.viewport)
+            sample = active_terrain.intersect_ray(origin, direction)
+            if sample is not None:
+                return sample.position
+        if ground_z is None:
+            return None
+        return self.screen_to_ground(screen, ground_z=ground_z)
