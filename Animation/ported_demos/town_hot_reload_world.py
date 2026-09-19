@@ -43,6 +43,7 @@ HILL_ENABLED = True
 BOULDER_ENABLED = True
 TOWER_ENABLED = True
 ARCH_ENABLED = True
+FLOATING_ISLAND_ENABLED = True
 COLLISION_GAP = 2.0
 
 SKY_COLOR = (23, 29, 34)
@@ -87,6 +88,30 @@ WINDMILL_WORLD_SIZE = (18.0, 18.0)
 TOWER_WALL_MATERIAL = SolidMaterial(fill=(112, 126, 137), outline=(43, 52, 58), thickness=-1.0, shaded=True)
 TOWER_ROOF_MATERIAL = SolidMaterial(fill=(92, 58, 48), outline=(52, 35, 30), thickness=-1.0, shaded=True)
 _WINDMILL_TEXTURES: tuple[dcg.Texture, ...] = ()
+
+# Off-center overhead landmark: floats above the town, not centered over it.
+FLOATING_ISLAND_CENTER = (95.0, 55.0)
+FLOATING_ISLAND_TOP_Z = 95.0
+FLOATING_ISLAND_TOP_RADIUS = 22.0
+FLOATING_ISLAND_TAPER_DEPTH = 45.0
+FLOATING_ISLAND_RING_COUNT = 5
+FLOATING_ISLAND_SEGMENTS = 16
+FLOATING_ISLAND_TOP_MATERIAL = SolidMaterial(fill=(88, 142, 74), outline=None, thickness=-1.0, shaded=True)
+FLOATING_ISLAND_ROCK_MATERIAL = SolidMaterial(fill=(122, 118, 110), outline=(56, 53, 48), thickness=-1.0, shaded=True)
+FLOATING_ISLAND_ROCK_EDGES = MeshEdgeStyle(color=(54, 51, 46, 150), thickness=-1.0)
+FLOATING_ISLAND_TRUNK_MATERIAL = SolidMaterial(fill=(96, 66, 42), outline=(46, 34, 24), thickness=-1.0, shaded=True)
+FLOATING_ISLAND_CANOPY_MATERIAL = SolidMaterial(fill=(52, 108, 58), outline=(28, 58, 34), thickness=-1.0, shaded=True)
+FLOATING_ISLAND_TREE_SIDES = 8
+# (offset_x, offset_y, trunk_height, canopy_height, canopy_radius) relative to the island center.
+FLOATING_ISLAND_TREE_SPECS = (
+    (-9.0, 4.0, 5.0, 9.0, 3.4),
+    (-4.0, 9.0, 6.0, 10.0, 3.8),
+    (2.0, 7.0, 5.5, 9.5, 3.6),
+    (7.0, 2.0, 6.5, 11.0, 4.0),
+    (9.0, -6.0, 5.0, 9.0, 3.2),
+    (-2.0, -8.0, 6.0, 10.0, 3.7),
+    (4.0, -3.0, 5.0, 9.0, 3.3),
+)
 
 
 def add_gable_house(scene: Scene3D, center: tuple[float, float], size: tuple[float, float], height: float) -> None:
@@ -328,6 +353,118 @@ def add_boulder(scene: Scene3D, center: tuple[float, float], size: tuple[float, 
     )
 
 
+def add_floating_island_tree(
+    scene: Scene3D,
+    position: tuple[float, float, float],
+    trunk_height: float,
+    canopy_height: float,
+    canopy_radius: float,
+) -> None:
+    """Box trunk plus a fanned cone canopy, following add_tower's roof-fan pattern."""
+    x, y, base_z = position
+    trunk_top = base_z + trunk_height
+    scene.add(
+        Box3D(
+            center=(x, y, base_z),
+            size=(1.6, 1.6, trunk_height),
+            material=FLOATING_ISLAND_TRUNK_MATERIAL,
+        )
+    )
+    sides = FLOATING_ISLAND_TREE_SIDES
+    angles = tuple(2.0 * math.pi * index / sides for index in range(sides))
+    base_ring = tuple((x + canopy_radius * math.cos(angle), y + canopy_radius * math.sin(angle), trunk_top) for angle in angles)
+    apex_index = sides
+    scene.add(
+        TriangleMesh3D(
+            vertices=base_ring + ((x, y, trunk_top + canopy_height),),
+            triangles=tuple((index, (index + 1) % sides, apex_index) for index in range(sides)),
+            material=FLOATING_ISLAND_CANOPY_MATERIAL,
+            cull_back_faces=False,
+        )
+    )
+
+
+def add_floating_island(
+    scene: Scene3D,
+    center: tuple[float, float],
+    top_z: float,
+    top_radius: float,
+    taper_depth: float,
+    ring_count: int,
+    segments: int,
+) -> None:
+    """A rocky spire that tapers to a point below a grassy plateau, hovering above the town."""
+    cx, cy = center
+    angles = tuple(2.0 * math.pi * index / segments for index in range(segments))
+
+    def jitter(angle: float, t: float) -> float:
+        # Jitter fades to zero near the bottom so the spire closes to a clean point.
+        return 1.0 + (1.0 - t) * (0.14 * math.sin(3.0 * angle + 0.6) + 0.08 * math.sin(7.0 * angle + 2.3))
+
+    def radius_at(t: float) -> float:
+        return top_radius * (1.0 - t) ** 1.5
+
+    rings = []
+    for ring_index in range(ring_count):
+        t = ring_index / ring_count
+        z = top_z - t * taper_depth
+        radius = radius_at(t)
+        rings.append(tuple((cx + radius * jitter(angle, t) * math.cos(angle), cy + radius * jitter(angle, t) * math.sin(angle), z) for angle in angles))
+
+    side_vertices: list[tuple[float, float, float]] = []
+    for ring in rings:
+        side_vertices.extend(ring)
+    apex_index = len(side_vertices)
+    side_vertices.append((cx, cy, top_z - taper_depth))
+
+    side_triangles = []
+    for ring_index in range(ring_count - 1):
+        base = ring_index * segments
+        next_base = (ring_index + 1) * segments
+        for segment in range(segments):
+            segment_next = (segment + 1) % segments
+            side_triangles.extend(
+                (
+                    (base + segment, base + segment_next, next_base + segment_next),
+                    (base + segment, next_base + segment_next, next_base + segment),
+                )
+            )
+    last_base = (ring_count - 1) * segments
+    for segment in range(segments):
+        segment_next = (segment + 1) % segments
+        side_triangles.append((last_base + segment, last_base + segment_next, apex_index))
+
+    scene.add(
+        TriangleMesh3D(
+            vertices=tuple(side_vertices),
+            triangles=tuple(side_triangles),
+            material=FLOATING_ISLAND_ROCK_MATERIAL,
+            edges=FLOATING_ISLAND_ROCK_EDGES,
+            cull_back_faces=False,
+        )
+    )
+
+    top_ring = rings[0]
+    top_center_index = len(top_ring)
+    scene.add(
+        TriangleMesh3D(
+            vertices=top_ring + ((cx, cy, top_z + 1.2),),
+            triangles=tuple((segment, (segment + 1) % segments, top_center_index) for segment in range(segments)),
+            material=FLOATING_ISLAND_TOP_MATERIAL,
+            cull_back_faces=False,
+        )
+    )
+
+    for offset_x, offset_y, trunk_height, canopy_height, canopy_radius in FLOATING_ISLAND_TREE_SPECS:
+        add_floating_island_tree(
+            scene,
+            position=(cx + offset_x, cy + offset_y, top_z),
+            trunk_height=trunk_height,
+            canopy_height=canopy_height,
+            canopy_radius=canopy_radius,
+        )
+
+
 def build_collision_world() -> CollisionWorld:
     collisions = CollisionWorld(gap=COLLISION_GAP)
     for index, (center, size, _height, _roof_type) in enumerate(HOUSE_SPECS, start=1):
@@ -533,6 +670,16 @@ def build_scene(road_texture: object | None = None) -> tuple[Scene3D, Box3D]:
             corner=(150.0, 150.0),
             extent=(30.0, 50.0),
             height=16.0,
+        )
+    if FLOATING_ISLAND_ENABLED:
+        add_floating_island(
+            scene,
+            center=FLOATING_ISLAND_CENTER,
+            top_z=FLOATING_ISLAND_TOP_Z,
+            top_radius=FLOATING_ISLAND_TOP_RADIUS,
+            taper_depth=FLOATING_ISLAND_TAPER_DEPTH,
+            ring_count=FLOATING_ISLAND_RING_COUNT,
+            segments=FLOATING_ISLAND_SEGMENTS,
         )
 
     for coordinate in range(0, int(WORLD_W) + 1, GRID_STEP):
