@@ -438,11 +438,11 @@ whole primitive by one scalar depth is suspicious and must be investigated.
 
 ## Open Questions
 
-1. Subclass vs. wrapper — resolved by Phase 0 spike.
-2. Mutable vs. immutable object transforms — Phase 2 decides based on usage patterns.
-3. Local-space-only vs. mixed world-point geometry — Phase 2 initial API uses both forms as sketched.
-4. Picking API scope — deferred past Phase 4; handle + source_id propagation is the minimum.
-5. Mesh ordering strategy for large face counts — Phase 5 measures and decides.
-6. Parent-child transform hierarchies — deferred; flat scene initially.
-7. Offscreen/image-export API — not in scope for initial implementation.
-8. Whether line-vs-face occlusion should split lines in screen space, clip in world space against occluder footprints, or convert selected linework into thin polygon packets.
+1. **Subclass vs. wrapper — resolved.** Phase 0 confirmed that `DrawInWindow3D` can subclass `dcg.DrawInWindow` and use normal context-manager construction. The wrapper fallback is not needed for this codebase.
+2. **Mutable vs. immutable object transforms — partially resolved.** `Camera3D` is an immutable frozen dataclass and camera changes replace the value. Scene objects currently use mutable dataclasses with `update_object()`, so a uniform immutable-transform policy has not been adopted. Revisit this during the API review if hierarchy or undo/redo requirements justify it.
+3. **Local-space-only vs. mixed world-point geometry — resolved for the initial API.** The framework intentionally supports both transformed primitives such as `Box3D` and explicit world-space geometry such as `Polygon3D`, `Line3D`, and `Polyline3D`. A future uniform local-space model remains an API evolution question, not an implementation blocker.
+4. **Picking API scope — still deferred.** Mesh `source_id` values are propagated through render packets and projected entries, providing the minimum identity needed by future picking and diagnostics. The framework does not yet define scene picking, ray-object intersection, or a structured `MeshHit` result.
+5. **Mesh ordering strategy for large face counts — partially resolved; final decision pending.** Meshes remain one retained renderable that emits triangle packets, and the documentation directs large meshes toward `AverageDepthSorter` because pairwise overlap sorting is still quadratic. Sweep-and-prune is implemented as an opt-in comparison path, but the performance evaluation and default-switch decision remain incomplete in tasks 5.4.14 and 5.4.15.
+6. **Parent-child transform hierarchies — still deferred.** The scene model remains flat. DearCyGui parent/child relationships are used for drawing-layer ownership, not for scene-object transforms or local/world hierarchy semantics.
+7. **Offscreen/image-export API — still out of scope.** `render_now()` renders a frame into DearCyGui drawing layers; it is not an image-export contract. Framebuffer, screenshot, and deterministic offscreen-rendering integration remain future work.
+8. **Line-vs-face partial occlusion — resolved for the current implementation.** The renderer uses screen-space line splitting at polygon intersections, then depth-tests each subsegment against nearer occluding faces. It keeps lines as native line packets rather than converting them to thin polygons. World-space clipping and thin-polygon substitution remain alternatives for future primitive families, but are not the selected approach here.
