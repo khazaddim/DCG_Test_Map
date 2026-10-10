@@ -223,3 +223,6 @@ Controller_change_epub/
 
 # ignore test epub
 tmp_epub_test/
+
+# Generated pipeline profiling measurements
+profiling-output/

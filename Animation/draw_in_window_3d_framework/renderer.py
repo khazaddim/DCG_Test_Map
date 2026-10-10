@@ -6,7 +6,7 @@ from typing import Iterable
 
 import dearcygui as dcg
 
-from .math3d import ProjectionPipeline, shade_directional
+from .math3d import Camera3D, ProjectionPipeline, Vec2, Viewport, shade_directional
 from .scene import (
     AnimatedImageMaterial,
     AnimationProjection,
@@ -27,6 +27,12 @@ from .scene import (
 @dataclass
 class PersistentOverlayState:
     transform: dcg.DrawingScale
+
+
+@dataclass(frozen=True)
+class PreparedDrawEntry:
+    entry: ProjectedRenderEntry
+    line_segments: tuple[tuple[Vec2, Vec2], ...] = ()
 
 
 def clear_drawing_list(layer: dcg.DrawingList) -> None:
@@ -145,34 +151,18 @@ class CpuRenderer3D:
         context: dcg.Context,
         target: dcg.DrawingList,
         scene: Scene3D,
-        camera,
-        viewport,
+        camera: Camera3D,
+        viewport: Viewport,
         persistent_overlay_target: dcg.DrawingList | None = None,
     ) -> RenderStats:
-        clear_drawing_list(target)
-        dcg.DrawRect(
-            context,
-            parent=target,
-            pmin=(0.0, 0.0),
-            pmax=(viewport.width, viewport.height),
-            fill=scene.background,
-            color=0,
-            thickness=-1,
-        )
-
         frame = FrameContext(camera=camera, viewport=viewport)
-        pipeline = ProjectionPipeline(camera, viewport)
-        packets = list(self._collect_packets(scene, frame))
-        clipped_count = 0
+        packets = self.collect_packets(scene, frame)
+        entries, clipped_count = self.project_packets(packets, frame)
         overlay_entries: list[ProjectedRenderEntry] = []
         background_entries: list[ProjectedRenderEntry] = []
         projected_entries: list[ProjectedRenderEntry] = []
         utility_line_entries: list[ProjectedRenderEntry] = []
-        for stable_index, packet in enumerate(packets):
-            entry = self._project_packet(packet, stable_index, frame, pipeline)
-            if entry is None:
-                clipped_count += 1
-                continue
+        for entry in entries:
             if entry.kind == "stream":
                 if entry.animation_projection is AnimationProjection.PERSISTENT_OVERLAY:
                     overlay_entries.append(entry)
@@ -189,17 +179,17 @@ class CpuRenderer3D:
         underlay_entries = tuple(entry for entry in sorted_result.entries if self._is_utility_underlay(entry))
         primary_entries = tuple(entry for entry in sorted_result.entries if not self._is_utility_underlay(entry))
         polygon_entries = tuple(entry for entry in primary_entries if entry.kind == "polygon")
-        emitted_count = 1
+        emission_entries: list[ProjectedRenderEntry] = []
         for entry in underlay_entries:
-            emitted_count += self._emit_entry(context, target, entry, frame, ())
-            for entry in background_entries:
-                emitted_count += self._emit_entry(context, target, entry, frame, ())
-        for entry in utility_line_entries:
-            emitted_count += self._emit_entry(context, target, entry, frame, ())
-        for entry in primary_entries:
-            emitted_count += self._emit_entry(context, target, entry, frame, polygon_entries)
-        if persistent_overlay_target is not None:
-            self._sync_persistent_overlays(context, persistent_overlay_target, overlay_entries, frame)
+            emission_entries.append(entry)
+            emission_entries.extend(background_entries)
+        emission_entries.extend(utility_line_entries)
+        emission_entries.extend(primary_entries)
+        prepared = self.prepare_line_occlusion(emission_entries, polygon_entries, frame)
+        emitted_count = self.emit_entries(
+            context, target, scene, frame, prepared,
+            persistent_overlay_target, overlay_entries,
+        )
 
         return RenderStats(
             packet_count=len(packets),
@@ -209,6 +199,63 @@ class CpuRenderer3D:
             cycle_detected=sorted_result.cycle_detected,
             sort_stats=sorted_result.sort_stats,
         )
+
+    def collect_packets(self, scene: Scene3D, frame: FrameContext) -> tuple[WorldRenderPacket, ...]:
+        return tuple(self._collect_packets(scene, frame))
+
+    def project_packets(
+        self, packets: Iterable[WorldRenderPacket], frame: FrameContext,
+    ) -> tuple[tuple[ProjectedRenderEntry, ...], int]:
+        pipeline = ProjectionPipeline(frame.camera, frame.viewport)
+        entries: list[ProjectedRenderEntry] = []
+        clipped_count = 0
+        for stable_index, packet in enumerate(packets):
+            entry = self._project_packet(packet, stable_index, frame, pipeline)
+            if entry is None:
+                clipped_count += 1
+            else:
+                entries.append(entry)
+        return tuple(entries), clipped_count
+
+    def prepare_line_occlusion(
+        self,
+        entries: Iterable[ProjectedRenderEntry],
+        polygon_entries: tuple[ProjectedRenderEntry, ...],
+        frame: FrameContext,
+    ) -> tuple[PreparedDrawEntry, ...]:
+        prepared: list[PreparedDrawEntry] = []
+        for entry in entries:
+            segments = ()
+            if entry.kind == "line":
+                occluders = () if entry.line_render_layer is LineRenderLayer.UTILITY else polygon_entries
+                segments = tuple(self._visible_line_segments(entry, occluders, frame))
+            prepared.append(PreparedDrawEntry(entry, segments))
+        return tuple(prepared)
+
+    def emit_entries(
+        self,
+        context: dcg.Context,
+        target: dcg.DrawingList,
+        scene: Scene3D,
+        frame: FrameContext,
+        prepared: Iterable[PreparedDrawEntry],
+        persistent_overlay_target: dcg.DrawingList | None = None,
+        overlay_entries: Iterable[ProjectedRenderEntry] = (),
+    ) -> int:
+        clear_drawing_list(target)
+        dcg.DrawRect(
+            context, parent=target, pmin=(0.0, 0.0),
+            pmax=(frame.viewport.width, frame.viewport.height),
+            fill=scene.background, color=0, thickness=-1,
+        )
+        emitted_count = 1
+        for draw in prepared:
+            emitted_count += self._emit_entry(
+                context, target, draw.entry, frame, (), line_segments=draw.line_segments,
+            )
+        if persistent_overlay_target is not None:
+            self._sync_persistent_overlays(context, persistent_overlay_target, overlay_entries, frame)
+        return emitted_count
 
     def _collect_packets(
         self,
@@ -469,6 +516,8 @@ class CpuRenderer3D:
         entry: ProjectedRenderEntry,
         frame: FrameContext,
         polygon_entries: tuple[ProjectedRenderEntry, ...],
+        *,
+        line_segments: tuple[tuple[Vec2, Vec2], ...] | None = None,
     ) -> int:
         if entry.kind == "polygon":
             if isinstance(entry.material, AnimatedImageMaterial):
@@ -539,7 +588,10 @@ class CpuRenderer3D:
                 elif entry.material.fill is not None:
                     color = entry.material.fill
                 thickness = entry.material.thickness
-            visible_segments = self._visible_line_segments(entry, polygon_entries, frame)
+            visible_segments = (
+                self._visible_line_segments(entry, polygon_entries, frame)
+                if line_segments is None else line_segments
+            )
             for start, end in visible_segments:
                 dcg.DrawLine(
                     context,

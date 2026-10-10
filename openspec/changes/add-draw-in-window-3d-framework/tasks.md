@@ -183,14 +183,14 @@
 ## Milestone 5.5: Performance Profiling Fixtures and Interactive GUI
 
 ### Stage boundaries and repeatable fixtures
-- [ ] 5.5.1 Ensure each pipeline stage (scene collection, projection/clipping, broad-phase, exact overlap/depth tests, graph construction/topological ordering, line occlusion, DCG node creation/publication) is a separate callable boundary; define non-overlapping timing regions and total scene-rebuild scope without double-counting nested work
-- [ ] 5.5.2 Create synthetic scene generators at documented face counts (100, 500, 2000, 10000 faces)
-- [ ] 5.5.3 Write profiling fixture: projection/clipping stage wall-clock time per face count
-- [ ] 5.5.4 Write profiling fixture: broad-phase candidate generation (once spatial acceleration exists)
-- [ ] 5.5.5 Write profiling fixture: exact overlap intersection and ray-plane depth tests
-- [ ] 5.5.6 Write profiling fixture: topological ordering (graph build + sort + cycle detection)
-- [ ] 5.5.7 Write profiling fixture: DCG draw-node creation, front/back publication, and obsolete-node cleanup, separating line-occlusion computation from emission time
-- [ ] 5.5.7.1 Add scene-collection and line-occlusion fixtures with representative lines and occluding faces so these costs are not hidden inside projection or node creation
+- [x] 5.5.1 Ensure each pipeline stage (scene collection, projection/clipping, broad-phase, exact overlap/depth tests, graph construction/topological ordering, line occlusion, DCG node creation/publication) is a separate callable boundary; define non-overlapping timing regions and total scene-rebuild scope without double-counting nested work
+- [x] 5.5.2 Create synthetic scene generators at documented face counts (100, 500, 2000, 10000 faces)
+- [x] 5.5.3 Write profiling fixture: projection/clipping stage wall-clock time per face count
+- [x] 5.5.4 Write profiling fixture: broad-phase candidate generation (once spatial acceleration exists)
+- [x] 5.5.5 Write profiling fixture: exact overlap intersection and ray-plane depth tests
+- [x] 5.5.6 Write profiling fixture: topological ordering (graph build + sort + cycle detection)
+- [x] 5.5.7 Write profiling fixture: DCG draw-node creation, front/back publication, and obsolete-node cleanup, separating line-occlusion computation from emission time
+- [x] 5.5.7.1 Add scene-collection and line-occlusion fixtures with representative lines and occluding faces so these costs are not hidden inside projection or node creation
 
 ### Interactive profiling and town comparison demo
 - [ ] 5.5.8 Add opt-in low-overhead wall-clock telemetry around actual scene rebuilds, including total rebuild time, per-stage exclusive time, separately identified unaccounted time, packet/projected/emitted counts, candidate/exact-test/edge counts, cycle state, and selected sorter strategy; keep telemetry disabled by default

@@ -636,22 +636,42 @@ class OverlapDepthSorter:
 
         start_time = perf_counter()
         candidate_strategy = "sweep_and_prune" if self.use_sweep_and_prune else "all_pairs"
-        candidate_pairs, candidate_metrics, bounds_by_index = (
-            _sweep_candidate_pairs(ordered_entries)
+        candidate_pairs, candidate_metrics, bounds_by_index = self.generate_candidates(ordered_entries)
+        edges = self.test_overlaps(ordered_entries, candidate_pairs, frame)
+        result, accepted_edge_count = self.order_entries(ordered_entries, edges)
+        sort_stats = _sort_stats(
+            ordered_entries,
+            bounds_by_index=bounds_by_index,
+            candidate_metrics=candidate_metrics,
+            exact_test_count=len(candidate_pairs),
+            accepted_edge_count=accepted_edge_count,
+            cycle_detected=result.cycle_detected,
+            sort_duration_seconds=perf_counter() - start_time,
+            candidate_strategy=candidate_strategy,
+        )
+        self.last_sort_stats = sort_stats
+        return SortResult(result.entries, result.cycle_detected, sort_stats)
+
+    def generate_candidates(
+        self, entries: Sequence[ProjectedRenderEntry],
+    ) -> tuple[tuple[tuple[int, int], ...], _CandidatePairMetrics, dict[int, _ProjectedBounds]]:
+        return (
+            _sweep_candidate_pairs(entries)
             if self.use_sweep_and_prune
-            else _all_pairs_candidate_pairs(ordered_entries)
+            else _all_pairs_candidate_pairs(entries)
         )
 
-        entry_count = len(ordered_entries)
-        successors: list[set[int]] = [set() for _ in ordered_entries]
-        indegree = [0] * entry_count
-        exact_test_count = 0
-        accepted_edge_count = 0
+    def test_overlaps(
+        self,
+        entries: Sequence[ProjectedRenderEntry],
+        candidate_pairs: Iterable[tuple[int, int]],
+        frame: FrameContext,
+    ) -> tuple[tuple[int, int], ...]:
+        edges: list[tuple[int, int]] = []
         for first_index, second_index in candidate_pairs:
-            exact_test_count += 1
             depths = overlapping_polygon_depths(
-                ordered_entries[first_index],
-                ordered_entries[second_index],
+                entries[first_index],
+                entries[second_index],
                 frame,
                 overlap_area_epsilon=self.overlap_area_epsilon,
             )
@@ -659,6 +679,19 @@ class OverlapDepthSorter:
                 continue
             farther = first_index if depths[0] > depths[1] else second_index
             nearer = second_index if farther == first_index else first_index
+            edges.append((farther, nearer))
+        return tuple(edges)
+
+    def order_entries(
+        self,
+        ordered_entries: Sequence[ProjectedRenderEntry],
+        edges: Iterable[tuple[int, int]],
+    ) -> tuple[SortResult, int]:
+        entry_count = len(ordered_entries)
+        successors: list[set[int]] = [set() for _ in ordered_entries]
+        indegree = [0] * entry_count
+        accepted_edge_count = 0
+        for farther, nearer in edges:
             if nearer not in successors[farther]:
                 successors[farther].add(nearer)
                 indegree[nearer] += 1
@@ -682,31 +715,8 @@ class OverlapDepthSorter:
         cycle_detected = len(ordered_indices) != entry_count
         if cycle_detected:
             fallback = AverageDepthSorter().sort(ordered_entries).entries
-            sort_stats = _sort_stats(
-                ordered_entries,
-                bounds_by_index=bounds_by_index,
-                candidate_metrics=candidate_metrics,
-                exact_test_count=exact_test_count,
-                accepted_edge_count=accepted_edge_count,
-                cycle_detected=True,
-                sort_duration_seconds=perf_counter() - start_time,
-                candidate_strategy=candidate_strategy,
-            )
-            self.last_sort_stats = sort_stats
-            return SortResult(entries=fallback, cycle_detected=True, sort_stats=sort_stats)
-        sort_stats = _sort_stats(
-            ordered_entries,
-            bounds_by_index=bounds_by_index,
-            candidate_metrics=candidate_metrics,
-            exact_test_count=exact_test_count,
-            accepted_edge_count=accepted_edge_count,
-            cycle_detected=False,
-            sort_duration_seconds=perf_counter() - start_time,
-            candidate_strategy=candidate_strategy,
-        )
-        self.last_sort_stats = sort_stats
-        return SortResult(
-            entries=tuple(ordered_entries[index] for index in ordered_indices),
-            cycle_detected=False,
-            sort_stats=sort_stats,
+            return SortResult(entries=fallback, cycle_detected=True), accepted_edge_count
+        return (
+            SortResult(entries=tuple(ordered_entries[index] for index in ordered_indices)),
+            accepted_edge_count,
         )

@@ -45,8 +45,15 @@ class FramePublisher:
         self.published_revision = 0
 
     def replace_contents(self, builder: FrameBuilder) -> int:
-        clear_drawing_list(self.back_layer)
+        self.prepare_back_layer()
         builder(self.back_layer)
+        return self.publish_back_layer()
+
+    def prepare_back_layer(self) -> None:
+        clear_drawing_list(self.back_layer)
+
+    def publish_back_layer(self) -> int:
+        """Publish a completed back layer and delete the obsolete nodes."""
         with self._parent.mutex:
             self.displayed_layer.show = False
             self.back_layer.show = True
