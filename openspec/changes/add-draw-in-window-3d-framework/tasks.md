@@ -180,46 +180,79 @@
 - [x] 5.25.8 Write unit tests for terrain height queries, triangle selection, and slope-policy edge cases
 - [x] 5.25.9 Write integration tests covering terrain-following movement, screen-to-surface queries, and camera follow on uneven terrain
 
-## Milestone 5.5: Performance Profiling Fixtures
-- [ ] 5.5.1 Ensure each pipeline stage (projection/clipping, broad-phase, overlap tests, topological sort, DCG node creation) is a separate callable boundary
+## Milestone 5.5: Performance Profiling Fixtures and Interactive GUI
+
+### Stage boundaries and repeatable fixtures
+- [ ] 5.5.1 Ensure each pipeline stage (scene collection, projection/clipping, broad-phase, exact overlap/depth tests, graph construction/topological ordering, line occlusion, DCG node creation/publication) is a separate callable boundary; define non-overlapping timing regions and total scene-rebuild scope without double-counting nested work
 - [ ] 5.5.2 Create synthetic scene generators at documented face counts (100, 500, 2000, 10000 faces)
 - [ ] 5.5.3 Write profiling fixture: projection/clipping stage wall-clock time per face count
 - [ ] 5.5.4 Write profiling fixture: broad-phase candidate generation (once spatial acceleration exists)
 - [ ] 5.5.5 Write profiling fixture: exact overlap intersection and ray-plane depth tests
 - [ ] 5.5.6 Write profiling fixture: topological ordering (graph build + sort + cycle detection)
-- [ ] 5.5.7 Write profiling fixture: DCG draw-node creation and front/back publication
-- [ ] 5.5.8 Produce baseline timing table for pure-Python implementation at each face count
-- [ ] 5.5.9 Identify bottleneck stages from profiling results; document findings
-- [ ] 5.5.10 If warranted by evidence, spike targeted acceleration (Cython, NumPy vectorization, or spatial indexing) on the identified bottleneck
+- [ ] 5.5.7 Write profiling fixture: DCG draw-node creation, front/back publication, and obsolete-node cleanup, separating line-occlusion computation from emission time
+- [ ] 5.5.7.1 Add scene-collection and line-occlusion fixtures with representative lines and occluding faces so these costs are not hidden inside projection or node creation
 
-## Milestone 6: Async Update Support
-- [ ] 6.1 Implement thread-safe update inbox (bounded queue with backpressure policy)
-- [ ] 6.2 Implement `SceneUpdate` with revision, operations tuple, and coalesce_key
-- [ ] 6.3 Implement `ReplaceGeometry` and `ReplaceField` operation types
-- [ ] 6.4 Implement `SceneSnapshot` for complete world replacement
-- [ ] 6.5 Implement `UpdateTicket` with status query and exception reporting
-- [ ] 6.6 Implement `submit_update()` (non-rendering, thread-safe enqueue)
-- [ ] 6.7 Implement `submit_snapshot()` (non-rendering, thread-safe enqueue)
-- [ ] 6.8 Implement `render_if_needed()` draining: apply queued updates atomically, then render newest state
-- [ ] 6.9 Implement coalescing: superseded updates sharing a key are dropped
-- [ ] 6.10 Implement revision ordering: older slow completions cannot overwrite newer state
-- [ ] 6.11 Implement atomic multi-operation application (geometry + field together or fail together)
-- [ ] 6.12 Implement error handling: failed updates leave last published scene intact
-- [ ] 6.13 Implement shutdown coordination: reject updates after context destruction
-- [ ] 6.14 Write integration tests: worker submissions never mutate scene/DCG state before drain
-- [ ] 6.15 Write integration tests: coalesced revisions apply newest, bounded queue does not grow
-- [ ] 6.16 Write integration tests: failed/cancelled updates report through UpdateTicket
+### Interactive profiling and town comparison demo
+- [ ] 5.5.8 Add opt-in low-overhead wall-clock telemetry around actual scene rebuilds, including total rebuild time, per-stage exclusive time, separately identified unaccounted time, packet/projected/emitted counts, candidate/exact-test/edge counts, cycle state, and selected sorter strategy; keep telemetry disabled by default
+- [ ] 5.5.9 Implement bounded rolling statistics over the last 120 successfully published rebuilds with latest/mean/P95 stage durations and a documented percentile convention; ignore idle frames, report failed attempts separately, and define enable/disable, pause/resume, and reset semantics
+- [ ] 5.5.10 Build a reusable DearCyGui profiling panel with ranked average-duration bars, milliseconds, latest/mean/P95 values, workload counters, sample count, idle/capture status, and enable/disable, pause/resume, and reset controls; refresh at most 5 times per second without invalidating the scene or forcing extra rebuilds
+- [ ] 5.5.11 Create `Animation/ported_demos/town_hot_reload_profiling.py` as a new profiling variant of `town_hot_reload.py`, using the same `town_hot_reload_world.py` rather than copying its geometry; preserve the original host, camera/movement/follow controls, startup sorter selection, and render-at-most-once-per-event-loop-frame behavior, reusing shared host logic where practical
+- [ ] 5.5.12 Reuse the existing world-module feature constants and add independent switches for currently inseparable comparison groups: houses, road geometry, flat grid, hill grid, border, mesh edge overlays, and the animated windmill billboard; retain existing defaults and distinguish geometry presence from road texturing and terrain-following settings
+- [ ] 5.5.13 Apply edited world switches through Reload world, not per-frame module mutation; build candidate scene/resources/collisions/terrain/traversal settings before publication, retain resources for the active scene, keep collision/support behavior consistent with enabled geometry, and preserve the active world and its configuration metadata on failure with explicit error feedback
+- [ ] 5.5.14 Snapshot effective world flags and scene generation after each successful reload; show them in the profiling host, reset the rolling window on a successful scene/configuration change, and record camera/viewport/strategy per sample so different workloads are not silently mixed while ordinary rotation remains in the same window
+- [ ] 5.5.15 Add optional Start capture / Stop and save controls producing a SnakeViz-compatible `cProfile` `.prof` file from actual scene rebuilds on the executing render thread; exclude idle waits, panel updates, world/resource construction, and file writing, distinguish captured timings from baseline telemetry, stop capture cleanly on shutdown, and visibly report save failures
+- [ ] 5.5.16 Export bounded raw stage measurements and workload counters as CSV/JSON with schema version, timing units, scene/configuration identity, effective flags, camera/viewport/strategy, and capture mode; attach equivalent context metadata to detailed captures and keep generated artifacts out of version control
 
-## Milestone 7: API Review and Demo Migration
-- [ ] 7.1 Review and reduce accidental public API surface
-- [ ] 7.2 Add type annotations on all public interfaces
-- [ ] 7.3 Add lifecycle documentation for widget, scene, handles, and streams
-- [ ] 7.3.1 Add a primitive-addition checklist requiring occlusion/visibility review against existing primitive families
-- [ ] 7.3.2 Revisit billboard line occlusion and choose a final compromise between world sorting, line readability, and responsiveness
-- [ ] 7.4 Maintain demo 11 framework port under `Animation/ported_demos/` and preserve the legacy original in `Animation/`
-- [ ] 7.5 Migrate demo 12 to a framework-backed port under `Animation/ported_demos/`
-- [ ] 7.6 Migrate demo 13 to a framework-backed port under `Animation/ported_demos/`
-- [ ] 7.7 Migrate demo 14 to a framework-backed port under `Animation/ported_demos/`
-- [ ] 7.8 Verify each migrated demo is a thin configuration of shared components and close any deferred visual/control parity checks
-- [ ] 7.9 Run full test suite against migrated demos
-- [ ] 7.10 Final `openspec validate` confirming spec requirements met
+### Validation and evidence handoff
+- [ ] 5.5.17 Test timing-region accounting, skipped stages, bounded history, latest/mean/P95 statistics, idle and failure handling, pause/reset behavior, export schema/units, capture scope, and `.prof` readability using `pstats`
+- [ ] 5.5.18 Add integration tests and a focused manual GUI check for yaw/pitch/zoom/movement with live bars, scene-switch reloads, unchanged original-host defaults, collision/terrain/resource consistency, failed-reload preservation, and panel updates that never force additional scene renders
+- [ ] 5.5.19 Predeclare an acceptable instrumentation-overhead budget, then measure telemetry-disabled, telemetry-enabled, and detailed-capture runs separately on identical scene/camera replays; report median/P95 rebuild latency and panel-update cost, verifying the budget without treating `cProfile` timings as an unprofiled baseline
+- [ ] 5.5.20 Document launching the profiling town variant, editing/reloading world switches, panel controls, capture/export formats and SnakeViz use, CPU-side timing limitations, and reproducible one-feature-at-a-time comparisons with a fixed camera path, viewport size, and sorter setting
+- [ ] 5.5.21 Produce baseline timing tables for the pure-Python implementation at each synthetic face count and for representative town configurations/replays; exclude reload/resource setup and detailed capture overhead from steady-state baselines
+- [ ] 5.5.22 Identify bottleneck stages and functions from fixtures, interactive scene comparisons, and optional detailed captures; document workload-dependent findings without assuming occlusion sorting is the dominant cost
+- [ ] 5.5.23 Prepare a profiling-evidence handoff for Milestone 6, including measured bottlenecks, raw exports/capture context, feature configurations, workload counters, unprofiled baseline timings, instrumentation overhead, and remaining measurement gaps
+
+## Milestone 6: Evidence-Based Compiled Core Design
+
+Depends on the Milestone 5.5 profiling-evidence handoff. This milestone produces an architecture decision and a bounded prototype plan, not a mandatory compiled renderer implementation.
+
+- [ ] 6.1 Review and rank bottlenecks using representative demo interactions and synthetic fixtures; include scene collection, data conversion, allocation, numerical stages, and DCG publication costs, recording any additional measurements needed
+- [ ] 6.2 Select evidence-backed acceleration boundaries and responsibilities that remain in Python; compare algorithmic improvements, caching, and buffer reuse against compilation rather than assuming every renderer object should migrate
+- [ ] 6.3 Design numerical storage for coordinates, indices, variable-length polygon offsets, bounds, planes, and scratch buffers; specify precision, layout, ownership, lifetime, and invalidation rules
+- [ ] 6.4 Design batched Python/core inputs and outputs while preserving existing scene-authoring objects, materials, callbacks, and DCG-thread publication; account for packing, copies, and result conversion
+- [ ] 6.5 Compare typed Cython kernels, internal Cython objects, NumPy operations, and typed memoryviews over compatible buffers; identify where shared storage can avoid copies and where conversion is unavoidable
+- [ ] 6.6 Define correctness and measurable performance gates, preserving clipping tolerances, stable ordering, cycle fallback, and publication behavior; require unprofiled end-to-end scene-rebuild improvement including conversion and allocation costs
+- [ ] 6.7 Specify the smallest representative prototype that can validate the selected architecture, its comparison workloads, and explicit success and rejection criteria before authorizing production implementation
+- [ ] 6.8 Record a proceed, revise, or defer decision with the Python reference/fallback strategy, build/distribution requirements, and separately scoped implementation tasks; deferring compilation is a valid evidence-backed outcome
+
+## Milestone 7: Async Update Support
+- [ ] 7.1 Implement thread-safe update inbox (bounded queue with backpressure policy)
+- [ ] 7.2 Implement `SceneUpdate` with revision, operations tuple, and coalesce_key
+- [ ] 7.3 Implement `ReplaceGeometry` and `ReplaceField` operation types
+- [ ] 7.4 Implement `SceneSnapshot` for complete world replacement
+- [ ] 7.5 Implement `UpdateTicket` with status query and exception reporting
+- [ ] 7.6 Implement `submit_update()` (non-rendering, thread-safe enqueue)
+- [ ] 7.7 Implement `submit_snapshot()` (non-rendering, thread-safe enqueue)
+- [ ] 7.8 Implement `render_if_needed()` draining: apply queued updates atomically, then render newest state
+- [ ] 7.9 Implement coalescing: superseded updates sharing a key are dropped
+- [ ] 7.10 Implement revision ordering: older slow completions cannot overwrite newer state
+- [ ] 7.11 Implement atomic multi-operation application (geometry + field together or fail together)
+- [ ] 7.12 Implement error handling: failed updates leave last published scene intact
+- [ ] 7.13 Implement shutdown coordination: reject updates after context destruction
+- [ ] 7.14 Write integration tests: worker submissions never mutate scene/DCG state before drain
+- [ ] 7.15 Write integration tests: coalesced revisions apply newest, bounded queue does not grow
+- [ ] 7.16 Write integration tests: failed/cancelled updates report through UpdateTicket
+
+## Milestone 8: API Review and Demo Migration
+- [ ] 8.1 Review and reduce accidental public API surface
+- [ ] 8.2 Add type annotations on all public interfaces
+- [ ] 8.3 Add lifecycle documentation for widget, scene, handles, and streams
+- [ ] 8.3.1 Add a primitive-addition checklist requiring occlusion/visibility review against existing primitive families
+- [ ] 8.3.2 Revisit billboard line occlusion and choose a final compromise between world sorting, line readability, and responsiveness
+- [ ] 8.4 Maintain demo 11 framework port under `Animation/ported_demos/` and preserve the legacy original in `Animation/`
+- [ ] 8.5 Migrate demo 12 to a framework-backed port under `Animation/ported_demos/`
+- [ ] 8.6 Migrate demo 13 to a framework-backed port under `Animation/ported_demos/`
+- [ ] 8.7 Migrate demo 14 to a framework-backed port under `Animation/ported_demos/`
+- [ ] 8.8 Verify each migrated demo is a thin configuration of shared components and close any deferred visual/control parity checks
+- [ ] 8.9 Run full test suite against migrated demos
+- [ ] 8.10 Final `openspec validate` confirming spec requirements met

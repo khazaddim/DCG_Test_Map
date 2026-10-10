@@ -216,7 +216,7 @@ The system SHALL support per-cell and per-node scalar field visualization on tri
 The system SHALL expose each render pipeline stage as a separately callable boundary so profiling fixtures can measure per-stage wall-clock time independently at varying face counts, guiding evidence-based acceleration decisions.
 
 #### Scenario: Stage isolation for profiling
-- **WHEN** a profiling test targets one pipeline stage (projection/clipping, broad-phase candidate generation, exact overlap tests, topological ordering, or DCG node creation/publication)
+- **WHEN** a profiling test targets one pipeline stage (scene collection, projection/clipping, broad-phase candidate generation, exact overlap/depth tests, graph construction/topological ordering, line occlusion, or DCG node creation/publication/cleanup)
 - **THEN** that stage can be invoked and timed independently without executing the full render pipeline
 
 #### Scenario: Synthetic scene scaling
@@ -225,7 +225,92 @@ The system SHALL expose each render pipeline stage as a separately callable boun
 
 #### Scenario: Acceleration justification
 - **WHEN** profiling results show a stage consuming a disproportionate share of frame time
-- **THEN** the framework documents the finding and targeted acceleration (Cython, NumPy vectorization, or spatial indexing) is applied only to that stage
+- **THEN** the framework documents the finding and hands the evidence to Milestone 6 for an acceleration design decision rather than automatically implementing a compiled backend
+
+### Requirement: Interactive Render-Stage Profiling
+The system SHALL provide opt-in CPU-side wall-clock stage telemetry and a reusable DearCyGui profiling panel for actual scene rebuilds. Telemetry SHALL be disabled by default, distinguish total rebuild latency from exclusive stage times, and SHALL NOT claim to measure GPU execution or time-to-display.
+
+#### Scenario: Rotating or moving an instrumented scene
+- **WHEN** telemetry is enabled and camera or scene changes cause a successful rebuild
+- **THEN** the system records stage timings, total rebuild time through publication/cleanup, and packet/projected/emitted, candidate-pair, exact-test, graph-edge, cycle, and strategy diagnostics
+- **AND** the panel displays latest, mean, and P95 milliseconds, ranked mean-duration bars, counters, and sample count over the last 120 successful rebuilds using a documented percentile convention
+- **AND** exclusive stages do not double-count nested work, unaccounted time is identified separately, and skipped stages have explicitly defined values
+
+#### Scenario: Idle, paused, or failed work
+- **WHEN** no scene rebuild occurs, telemetry is paused/disabled, or a rebuild fails
+- **THEN** no sample is added to the successful-rebuild rolling window and idle frames do not reduce its averages
+- **AND** pause/resume affects telemetry rather than scene interaction, reset clears the window, and failures receive explicit feedback rather than appearing as successful timing samples
+
+#### Scenario: Profiling panel scheduling
+- **WHEN** the profiling panel refreshes
+- **THEN** it updates at most 5 times per second outside the measured scene pipeline, without invalidating the scene or requesting an additional rebuild
+- **AND** input callbacks remain state-update/invalidation operations with scene rendering coalesced to at most once per event-loop frame
+
+#### Scenario: Instrumentation overhead validation
+- **WHEN** interactive telemetry is validated
+- **THEN** an overhead budget is declared before measurement and verified with identical scene/camera replays using telemetry disabled and enabled
+- **AND** median/P95 rebuild timings and panel-update costs are reported separately from detailed-capture overhead
+
+### Requirement: Detailed CPU Captures and Measurement Exports
+The profiling host SHALL support explicit detailed `cProfile` captures producing SnakeViz-compatible `.prof` files and CSV/JSON exports of bounded raw telemetry with sufficient context to reproduce the workload.
+
+#### Scenario: Capturing interactive rebuilds
+- **WHEN** the user starts detailed capture, interacts with the scene, and stops capture
+- **THEN** profiling covers actual rebuilds on the executing render thread and produces a `.prof` file readable by `pstats`
+- **AND** idle waits, panel updates, reload/resource construction, and file writing are excluded from the capture
+- **AND** captured telemetry is marked as profiled rather than treated as an unprofiled performance baseline, with capture state visible in the GUI and clean capture shutdown
+
+#### Scenario: Exporting measurements or reporting save failure
+- **WHEN** measurements or a detailed capture are saved
+- **THEN** raw CSV/JSON telemetry includes schema version, timing units, scene generation/configuration identity, effective world flags, camera/viewport, sorter strategy, workload counters, and capture mode
+- **AND** equivalent context metadata accompanies `.prof` artifacts, generated outputs remain out of version control, and capture/export failures are visibly reported
+
+### Requirement: Profiling Town Variant and Reloadable Feature Comparisons
+The project SHALL add `Animation/ported_demos/town_hot_reload_profiling.py` as a profiling variant of `town_hot_reload.py` using the shared `town_hot_reload_world.py`. The original host SHALL remain available and feature-switch defaults SHALL preserve its current scene.
+
+#### Scenario: Comparing scene-element costs
+- **WHEN** the user edits world-module feature switches and reloads the profiling town
+- **THEN** existing switches are reused and independent switches support houses, road geometry, flat grid, hill grid, border, mesh edge overlays, and the animated windmill billboard
+- **AND** geometry switches are distinguished from road texturing and terrain-following policy, mesh overlays can be disabled without removing their meshes, and existing render-layer/occlusion policies and the avatar are preserved
+- **AND** enabled geometry is reflected consistently in collision/support behavior, effective flag dependencies are recorded, and camera/movement/follow controls and startup sorter selection remain available
+
+#### Scenario: Successful configuration replacement
+- **WHEN** a candidate world reload succeeds
+- **THEN** candidate scene/resources/collisions/terrain/traversal settings and effective configuration metadata are built before active references are replaced
+- **AND** the new configuration is displayed/exported and the rolling window is reset so old and new scene configurations are not silently averaged together
+
+#### Scenario: Failed world reload
+- **WHEN** candidate construction fails during a feature-switch reload
+- **THEN** the active world, resources, configuration snapshot, and rolling measurement window remain intact and the failure is visibly reported
+
+#### Scenario: Reproducible feature comparisons
+- **WHEN** stage timing differences between town configurations are evaluated
+- **THEN** documented comparisons change one feature at a time with a fixed camera path, viewport size, and sorter setting, recording counters and configuration context alongside timings
+- **AND** steady-state baselines exclude reload/resource setup and detailed-capture overhead
+
+### Requirement: Evidence-Based Compiled Core Design
+The project SHALL use the profiling evidence to document acceleration boundaries, numerical data representation, a batched Python/core interface, and a bounded prototype plan before authorizing compiled production implementation. This design milestone SHALL permit an evidence-backed decision to defer compilation and SHALL NOT require a production compiled backend for completion.
+
+#### Scenario: Selecting acceleration boundaries
+- **WHEN** profiling evidence is reviewed for compiled-core design
+- **THEN** the design compares algorithmic improvements, caching, buffer reuse, typed Cython kernels, internal Cython objects, NumPy operations, and typed memoryviews against the measured workload
+- **AND** compilation is limited to evidence-backed computational responsibilities rather than requiring migration of every public renderer object
+
+#### Scenario: Numerical storage and interface contract
+- **WHEN** a compiled-core architecture is proposed
+- **THEN** the design specifies numerical precision and layout, coordinate/index buffers, variable-length polygon offsets, ownership, lifetime, invalidation, and batched inputs/outputs
+- **AND** it accounts for packing, copies, allocation, and result conversion while preserving Python scene-authoring objects, materials, callbacks, and DCG-thread publication
+- **AND** shared storage is distinguished from conversions that cannot be zero-copy
+
+#### Scenario: Prototype acceptance criteria
+- **WHEN** a representative prototype is planned
+- **THEN** its correctness criteria preserve clipping tolerances, stable ordering, cycle fallback, and publication behavior against the Python reference
+- **AND** its performance criteria require measurable unprofiled end-to-end scene-rebuild improvement including conversion and allocation costs, not only faster isolated numerical kernels
+
+#### Scenario: Design decision handoff
+- **WHEN** the compiled-core design milestone concludes
+- **THEN** a proceed, revise, or defer decision is documented with its evidence, prototype success/rejection criteria, Python reference/fallback strategy, build/distribution requirements, and separately scoped implementation tasks
+- **AND** a decision to defer compilation does not block milestone completion
 
 ### Requirement: Ported Demo Placement
 The system SHALL keep the original numbered `Animation/` demos as preserved references and place framework-backed demo migrations in `Animation/ported_demos/`.

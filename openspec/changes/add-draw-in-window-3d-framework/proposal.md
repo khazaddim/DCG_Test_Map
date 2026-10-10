@@ -11,6 +11,9 @@ Demos 11 through 14 each copy and extend a full scene renderer to add one visual
 - Provide selectable ordering strategies: `AverageDepthSorter` (simple) and `OverlapDepthSorter` (topological, default for small scenes)
 - Support solid faces, textured faces, labels, lines, billboards, ground planes, indexed triangle meshes, and tetrahedral mesh exterior surfaces
 - Add optional collision and camera-follow controllers composed outside the renderer
+- Add pipeline profiling fixtures, opt-in interactive GUI stage telemetry, CSV/JSON measurement exports, and optional SnakeViz-compatible CPU captures
+- Add a profiling variant of the town hot-reload host using the shared world module and independent feature switches for reproducible scene-element cost comparisons, preserving the original host and existing defaults
+- Use profiling evidence in a compiled-core design milestone covering data layout, batching, and Python/core boundaries without requiring a production compiled backend
 - Support thread-safe async updates for CAE/solver workflows
 - Provide three `DrawStream` animation ownership policies: persistent overlay, preprojected non-occludable, and preprojected occludable
 - Preserve the original numbered `Animation/` demos as historical references and place framework-backed demo ports under `Animation/ported_demos/`
