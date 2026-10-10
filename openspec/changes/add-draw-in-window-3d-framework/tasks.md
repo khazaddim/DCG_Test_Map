@@ -165,6 +165,7 @@
 - [x] 5.4.13 Add focused performance fixtures at 32, 64, 128, 256, and 512 polygons for distributed and dense scenes, reporting median and 95th-percentile duration with every pair counter for both boolean settings
 - [ ] 5.4.14 Verify distributed fixtures materially reduce exact tests and improve target-scene yaw/pitch sort latency while dense fixtures document the remaining O(n²) worst case
 - [ ] 5.4.15 Make sweep-and-prune the constructor default only after correctness and performance gates pass; retain the all-pairs implementation and startup boolean as a rollback and comparison path, and document the measured result
+  - Default enabled by explicit user approval on 2026-10-10 after town visual evaluation; all-pairs rollback and comparison coverage retained. The original quantitative performance-gate evaluation remains pending; see the default decision update in design.md.
 
 ## Milestone 5.25: Terrain Surface Queries and Hill Traversal
 - [x] 5.25.1 Define a terrain-query abstraction that can return surface height and optional surface normal for a world-space `x,y` position

@@ -621,7 +621,7 @@ class OverlapDepthSorter:
         *,
         overlap_area_epsilon: float = 0.25,
         depth_epsilon: float = 1e-5,
-        use_sweep_and_prune: bool = False,
+        use_sweep_and_prune: bool = True,
     ) -> None:
         self.overlap_area_epsilon = overlap_area_epsilon
         self.depth_epsilon = depth_epsilon

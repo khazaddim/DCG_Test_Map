@@ -479,6 +479,29 @@ def test_overlap_depth_sorter_orders_by_ray_plane_depth_at_overlap() -> None:
     assert ordered.cycle_detected is False
 
 
+def test_default_sorter_and_renderer_use_sweep_with_all_pairs_opt_out() -> None:
+    frame = make_sort_frame()
+    entries = (
+        make_screen_plane_entry(frame, 7, ((20.0, 20.0), (40.0, 20.0), (40.0, 40.0), (20.0, 40.0)), 0.01),
+        make_screen_plane_entry(frame, 3, ((100.0, 20.0), (120.0, 20.0), (120.0, 40.0), (100.0, 40.0)), 0.01),
+    )
+    for sorter in (OverlapDepthSorter(), CpuRenderer3D().sorter):
+        assert isinstance(sorter, OverlapDepthSorter)
+        assert sorter.use_sweep_and_prune is True
+        result = sorter.sort(entries, frame)
+        assert result.sort_stats is not None
+        assert result.sort_stats.candidate_strategy == "sweep_and_prune"
+        assert result.sort_stats.exact_test_count == 0
+        assert [entry.stable_index for entry in result.entries] == [3, 7]
+
+    baseline = OverlapDepthSorter(use_sweep_and_prune=False).sort(entries, frame)
+    assert baseline.sort_stats is not None
+    assert baseline.sort_stats.candidate_strategy == "all_pairs"
+    assert baseline.sort_stats.exact_test_count == 1
+    assert [entry.stable_index for entry in baseline.entries] == [3, 7]
+    assert not baseline.cycle_detected
+
+
 def test_overlap_depth_sorter_reports_cycles_and_uses_average_depth_fallback(monkeypatch) -> None:
     frame = make_sort_frame()
     entries = [
@@ -712,7 +735,7 @@ def test_overlap_sorter_strategies_match_real_geometric_cycle_fallback() -> None
         make_screen_plane_entry(frame, 3, ((70.0, 70.0), (90.0, 70.0), (90.0, 90.0), (70.0, 90.0)), 0.004),
     )
 
-    all_pairs = OverlapDepthSorter().sort(entries, frame)
+    all_pairs = OverlapDepthSorter(use_sweep_and_prune=False).sort(entries, frame)
     sweep = OverlapDepthSorter(use_sweep_and_prune=True).sort(entries, frame)
     expected = [entry.stable_index for entry in scene_module.AverageDepthSorter().sort(entries).entries]
 
@@ -890,11 +913,13 @@ def test_collision_sort_example_status_surfaces_cycle_fallback() -> None:
     assert "occlusion cycle fallback" in status
 
 
-def test_collision_sort_example_uses_startup_sweep_toggle(monkeypatch) -> None:
+@pytest.mark.parametrize("use_sweep_and_prune", (True, False))
+def test_collision_sort_example_uses_startup_sweep_toggle(monkeypatch, use_sweep_and_prune: bool) -> None:
     example = load_collision_sort_example()
 
-    monkeypatch.setattr(example, "USE_SWEEP_AND_PRUNE", True)
+    assert example.USE_SWEEP_AND_PRUNE is True
+    monkeypatch.setattr(example, "USE_SWEEP_AND_PRUNE", use_sweep_and_prune)
     sorter = example.build_sorter("overlap")
 
     assert isinstance(sorter, OverlapDepthSorter)
-    assert sorter.use_sweep_and_prune is True
+    assert sorter.use_sweep_and_prune is use_sweep_and_prune

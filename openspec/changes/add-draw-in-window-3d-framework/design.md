@@ -76,6 +76,15 @@ DearCyGui provides `DrawInWindow`, `DrawingList`, `DrawPolygon`, `DrawLine`, `Dr
 
 ### Milestone 5.4 fixture implementation handoff
 
+**Default decision update (2026-10-10):** The user approved sweep-and-prune as
+the framework, demo, and ordinary-test default after observing noticeably better
+town rendering across the conditions they tried. `OverlapDepthSorter()` now
+defaults to `True`; the town and collision diagnostic startup switches already
+use `True`. Explicit `False` comparison tests, benchmarks, and rollback remain.
+This approval supersedes the default-hold instructions below, not the numerical
+evaluation protocol: the historical quantitative gates are not claimed to have
+passed. Task 5.4.15's quantitative evaluation remains outstanding.
+
 This is the fixture design for Terra to implement during tasks 5.4.10-5.4.15,
 including 5.4.11.1. It is not a record of passing tests or measured performance.
 Keep `use_sweep_and_prune=False` and the demo startup constant unchanged until

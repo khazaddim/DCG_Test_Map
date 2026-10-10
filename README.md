@@ -118,7 +118,11 @@ without presenting an empty line-occlusion workload as representative.
 
 The all-pairs option preserves the production comparison path, but the runner
 rejects it at 10000 faces (49,995,000 materialized pairs). Sweep is selected
-explicitly for large fixtures; **the production sorter default is unchanged**.
+for fixtures and is also the default for `OverlapDepthSorter()` and the default
+`CpuRenderer3D`. The town and collision diagnostic hosts enable their startup
+`USE_SWEEP_AND_PRUNE` switches by default. To opt out, construct
+`OverlapDepthSorter(use_sweep_and_prune=False)` or set the host's switch to
+`False`. Explicit all-pairs regression tests and comparison benchmarks remain.
 The [existing sorting benchmark](Animation/ported_demos/benchmark_overlap_sort.py)
 remains the source for dense, separated, and other worst-case sort workloads.
 The new [stage tests](tests/test_draw_in_window_3d_milestone5_5.py) also exercise
