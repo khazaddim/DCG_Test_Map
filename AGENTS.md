@@ -10,6 +10,7 @@ This repository includes local skills for GitHub Copilot coding agents.
 - `scene-example-navigation`: Demo-by-demo world-authoring router for the framework-backed ports, including class coverage, reusable patterns, and current example gaps.
 - `hot-reload-world-development`: DearCyGui retained-world reload workflow, including module/resource ownership, safe candidate-scene replacement, and failure preservation.
 - `openspec-epub-workflow`: Generate review-ready markdown book folders and build EPUB files from OpenSpec changes, project files, or diffs using `mark2epub.py`.
+- `renderer-benchmarking`: Run and interpret the pipeline and overlap-sort benchmarks, including CLI options, smoke tests, long-run expectations, workload counters, and timing limitations.
 
 ## Skill Paths
 
@@ -19,6 +20,7 @@ This repository includes local skills for GitHub Copilot coding agents.
 - `.github/skills/scene-example-navigation/SKILL.md`
 - `.github/skills/hot-reload-world-development/SKILL.md`
 - `.github/skills/openspec-epub-workflow/SKILL.md`
+- `.github/skills/renderer-benchmarking/SKILL.md`
 
 ## EPUB Workflow Assets
 
@@ -29,3 +31,4 @@ This repository includes local skills for GitHub Copilot coding agents.
 
 - Prefer the workspace Python interpreter when running helper scripts.
 - Keep generated EPUB outputs and generated source folders out of version control unless explicitly requested.
+- Keep generated benchmark reports under the gitignored `profiling-output/` directory unless explicitly requested otherwise.
