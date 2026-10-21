@@ -11,8 +11,6 @@ from pathlib import Path
 import platform
 from statistics import median
 import sys
-from time import perf_counter_ns
-from typing import Callable, ParamSpec, TypeVar
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -26,60 +24,11 @@ from Animation.draw_in_window_3d_framework import (
     Scene3D, SolidMaterial, Vec2, Vec3, Viewport,
 )
 from Animation.draw_in_window_3d_framework.widget import FramePublisher
+from Animation.draw_in_window_3d_framework.profiling import STAGES, StageMeasurements
 from Animation.ported_demos.benchmark_overlap_sort import make_frame, quad, screen_plane_entry
 
 
 FACE_COUNTS = (100, 500, 2000, 10000)
-STAGES = (
-    "scene_collection", "projection_clipping", "broad_phase", "exact_tests",
-    "topological_ordering", "line_occlusion", "node_creation",
-    "back_layer_cleanup", "publication_cleanup",
-)
-P = ParamSpec("P")
-T = TypeVar("T")
-
-
-class StageMeasurements:
-    """Sequential regions only: a parent duration must never include a child."""
-
-    def __init__(self, clock: Callable[[], int] = perf_counter_ns) -> None:
-        self.clock = clock
-        self.durations_ns = dict.fromkeys(STAGES, 0)
-        self._active = False
-        self._failed = False
-        self._start = clock()
-
-    def measure(self, stage: str, action: Callable[P, T], *args: P.args, **kwargs: P.kwargs) -> T:
-        if stage not in self.durations_ns:
-            raise ValueError(f"Unknown pipeline stage: {stage}")
-        if self._active:
-            raise RuntimeError("Timing regions must not overlap")
-        if self._failed:
-            raise RuntimeError("Cannot reuse a failed rebuild measurement")
-        self._active = True
-        self._failed = True
-        start = self.clock()
-        try:
-            result = action(*args, **kwargs)
-        finally:
-            duration = self.clock() - start
-            self._active = False
-        self.durations_ns[stage] += duration
-        self._failed = False
-        return result
-
-    def finish(self) -> dict[str, int]:
-        if self._active:
-            raise RuntimeError("Cannot finish inside a timing region")
-        if self._failed:
-            raise RuntimeError("Failed rebuilds are not successful timing samples")
-        total = self.clock() - self._start
-        unaccounted = total - sum(self.durations_ns.values())
-        if unaccounted < 0:
-            raise RuntimeError("Exclusive stages exceed total rebuild duration")
-        return {**self.durations_ns, "total_rebuild": total, "unaccounted": unaccounted}
-
-
 @dataclass(frozen=True)
 class PipelineFixture:
     scene: Scene3D

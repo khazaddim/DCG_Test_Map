@@ -1,19 +1,21 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, replace
+from dataclasses import asdict, dataclass, replace
 from typing import Callable, Sequence, TypeAlias
 
 import dearcygui as dcg
 
 try:
     from .math3d import Camera3D, Viewport
+    from .profiling import RenderTelemetry, StageMeasurements
     from .renderer import CpuRenderer3D
-    from .scene import RenderStats, Scene3D
+    from .scene import OverlapDepthSorter, RenderStats, Scene3D
     from .terrain import TerrainSurface
 except ImportError:
     from Animation.draw_in_window_3d_framework.math3d import Camera3D, Viewport
+    from Animation.draw_in_window_3d_framework.profiling import RenderTelemetry, StageMeasurements
     from Animation.draw_in_window_3d_framework.renderer import CpuRenderer3D
-    from Animation.draw_in_window_3d_framework.scene import RenderStats, Scene3D
+    from Animation.draw_in_window_3d_framework.scene import OverlapDepthSorter, RenderStats, Scene3D
     from Animation.draw_in_window_3d_framework.terrain import TerrainSurface
 
 
@@ -77,6 +79,7 @@ class DrawInWindow3D(dcg.DrawInWindow):
         camera: Camera3D | None = None,
         renderer: CpuRenderer3D | None = None,
         terrain: TerrainSurface | None = None,
+        telemetry: RenderTelemetry | None = None,
         **kwargs,
     ) -> None:
         super().__init__(context, **kwargs)
@@ -87,6 +90,7 @@ class DrawInWindow3D(dcg.DrawInWindow):
         self.camera = camera or Camera3D(target=(0.0, 0.0, 0.0), yaw_deg=0.0, pitch_deg=52.0, zoom=1.0)
         self.renderer = renderer or CpuRenderer3D()
         self.terrain = terrain
+        self.telemetry = telemetry
         self._dirty = True
         self.last_render_revision = 0
         self.last_render_stats = RenderStats(0, 0, 0, 0, False)
@@ -135,19 +139,33 @@ class DrawInWindow3D(dcg.DrawInWindow):
         return self.render_now()
 
     def render_now(self) -> RenderStats:
+        if self.telemetry is not None and self.telemetry.recording:
+            sorter = self.renderer.sorter
+            strategy = type(sorter).__name__
+            if isinstance(sorter, OverlapDepthSorter):
+                strategy = "sweep_and_prune" if sorter.use_sweep_and_prune else "all_pairs"
+            return self.telemetry.rebuild(
+                self._render_now, camera=asdict(self.camera),
+                viewport=asdict(self.viewport), strategy=strategy,
+            )
+        return self._render_now()
+
+    def _render_now(self, measurements: StageMeasurements | None = None) -> RenderStats:
         rendered: dict[str, RenderStats] = {}
 
         def builder(layer: dcg.DrawingList) -> None:
+            kwargs = {} if measurements is None else {"measurements": measurements}
             rendered["stats"] = self.renderer.render(
-                self.context,
-                layer,
-                self.scene,
-                self.camera,
-                self.viewport,
-                persistent_overlay_target=self.overlay_layer,
+                self.context, layer, self.scene, self.camera, self.viewport,
+                persistent_overlay_target=self.overlay_layer, **kwargs,
             )
 
-        self.last_render_revision = self.publisher.replace_contents(builder)
+        if measurements is None:
+            self.last_render_revision = self.publisher.replace_contents(builder)
+        else:
+            measurements.measure("back_layer_cleanup", self.publisher.prepare_back_layer)
+            builder(self.publisher.back_layer)
+            self.last_render_revision = measurements.measure("publication_cleanup", self.publisher.publish_back_layer)
         self._dirty = False
         self.last_render_stats = rendered["stats"]
         return self.last_render_stats

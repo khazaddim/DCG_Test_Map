@@ -50,6 +50,13 @@ BOULDER_ENABLED = True
 TOWER_ENABLED = True
 ARCH_ENABLED = False
 FLOATING_ISLAND_ENABLED = True
+HOUSES_ENABLED = True
+ROAD_ENABLED = True
+FLAT_GRID_ENABLED = True
+HILL_GRID_ENABLED = True
+BORDER_ENABLED = True
+MESH_EDGES_ENABLED = True
+WINDMILL_ENABLED = True
 COLLISION_GAP = 2.0
 HILL_CORNER = (150.0, 150.0)
 HILL_EXTENT = (30.0, 50.0)
@@ -125,6 +132,21 @@ FLOATING_ISLAND_TREE_SPECS = (
 AVATAR_START_XY = (126.0, 112.5)
 
 
+def effective_world_flags() -> dict[str, bool]:
+    flags = {
+        name: value for name, value in globals().items()
+        if name.endswith("_ENABLED") and isinstance(value, bool)
+    }
+    flags["ROAD_TEXTURE_ENABLED"] = ROAD_ENABLED and ROAD_TEXTURE_ENABLED
+    flags["HILL_GRID_ENABLED"] = HILL_ENABLED and HILL_GRID_ENABLED
+    flags["TERRAIN_FOLLOWING_ENABLED"] = HILL_ENABLED and TERRAIN_FOLLOWING_ENABLED
+    flags["WINDMILL_ENABLED"] = TOWER_ENABLED and WINDMILL_ENABLED
+    flags["MESH_EDGES_ENABLED"] = MESH_EDGES_ENABLED and (
+        HOUSES_ENABLED or TOWER_ENABLED or BOULDER_ENABLED or FLOATING_ISLAND_ENABLED
+    )
+    return flags
+
+
 def add_gable_house(scene: Scene3D, center: tuple[float, float], size: tuple[float, float], height: float) -> None:
     width, depth = size
     x0, x1 = center[0] - width * 0.5, center[0] + width * 0.5
@@ -136,7 +158,7 @@ def add_gable_house(scene: Scene3D, center: tuple[float, float], size: tuple[flo
             vertices=((x0, y0, height), (x1, y0, height), (x1, y1, height), (x0, y1, height), (x0, center[1], ridge_z), (x1, center[1], ridge_z)),
             triangles=((0, 1, 5), (0, 5, 4), (3, 5, 2), (3, 4, 5), (0, 4, 3), (1, 2, 5)),
             material=GABLE_ROOF_MATERIAL,
-            edges=ROOF_EDGES,
+            edges=ROOF_EDGES if MESH_EDGES_ENABLED else None,
         )
     )
 
@@ -152,7 +174,7 @@ def add_hip_house(scene: Scene3D, center: tuple[float, float], size: tuple[float
             vertices=((x0, y0, height), (x1, y0, height), (x1, y1, height), (x0, y1, height), (center[0] - width * 0.22, center[1], ridge_z), (center[0] + width * 0.22, center[1], ridge_z)),
             triangles=((0, 1, 5), (0, 5, 4), (1, 2, 5), (2, 3, 4), (2, 4, 5), (3, 0, 4)),
             material=HIP_ROOF_MATERIAL,
-            edges=ROOF_EDGES,
+            edges=ROOF_EDGES if MESH_EDGES_ENABLED else None,
         )
     )
 
@@ -180,7 +202,7 @@ def add_tower(scene: Scene3D, center: tuple[float, float], size: tuple[float, fl
             vertices=bottom_ring + top_ring,
             triangles=tuple(side_triangles),
             material=TOWER_WALL_MATERIAL,
-            edges=ROOF_EDGES,
+            edges=ROOF_EDGES if MESH_EDGES_ENABLED else None,
             cull_back_faces=False,
         )
     )
@@ -193,7 +215,7 @@ def add_tower(scene: Scene3D, center: tuple[float, float], size: tuple[float, fl
                 for index in range(TOWER_SIDES)
             ),
             material=TOWER_ROOF_MATERIAL,
-            edges=ROOF_EDGES,
+            edges=ROOF_EDGES if MESH_EDGES_ENABLED else None,
             cull_back_faces=False,
         )
     )
@@ -273,6 +295,9 @@ def add_arch(scene: Scene3D) -> None:
 
 def create_windmill_textures(context: dcg.Context) -> tuple[dcg.Texture, ...]:
     global _WINDMILL_TEXTURES
+    if not (TOWER_ENABLED and WINDMILL_ENABLED):
+        _WINDMILL_TEXTURES = ()
+        return _WINDMILL_TEXTURES
     textures = []
     center = (WINDMILL_BITMAP_SIZE - 1) * 0.5
     for frame_index in range(WINDMILL_FRAME_COUNT):
@@ -358,7 +383,7 @@ def add_boulder(scene: Scene3D, center: tuple[float, float], size: tuple[float, 
             vertices=vertices,
             triangles=tuple(triangles),
             material=BOULDER_MATERIAL,
-            edges=BOULDER_EDGES,
+            edges=BOULDER_EDGES if MESH_EDGES_ENABLED else None,
             cull_back_faces=False,
         )
     )
@@ -450,7 +475,7 @@ def add_floating_island(
             vertices=tuple(side_vertices),
             triangles=tuple(side_triangles),
             material=FLOATING_ISLAND_ROCK_MATERIAL,
-            edges=FLOATING_ISLAND_ROCK_EDGES,
+            edges=FLOATING_ISLAND_ROCK_EDGES if MESH_EDGES_ENABLED else None,
             cull_back_faces=False,
         )
     )
@@ -478,8 +503,9 @@ def add_floating_island(
 
 def build_collision_world() -> CollisionWorld:
     collisions = CollisionWorld(gap=COLLISION_GAP)
-    for index, (center, size, _height, _roof_type) in enumerate(HOUSE_SPECS, start=1):
-        collisions.add(f"house {index}", AabbFootprint.from_center(center[0], center[1], size[0], size[1]))
+    if HOUSES_ENABLED:
+        for index, (center, size, _height, _roof_type) in enumerate(HOUSE_SPECS, start=1):
+            collisions.add(f"house {index}", AabbFootprint.from_center(center[0], center[1], size[0], size[1]))
     if BOULDER_ENABLED:
         collisions.add(
             "boulder",
@@ -518,7 +544,7 @@ def build_collision_world() -> CollisionWorld:
 
 
 def build_traversal_settings() -> TraversalSettings:
-    if not TERRAIN_FOLLOWING_ENABLED:
+    if not (HILL_ENABLED and TERRAIN_FOLLOWING_ENABLED):
         return TraversalSettings(mode=TerrainMode.FLAT, fallback_ground_z=0.0)
     return TraversalSettings(
         mode=TerrainMode.FOLLOW_SURFACE,
@@ -578,6 +604,8 @@ def add_rolling_hill(
 ) -> None:
     vertices, triangles = generate_rolling_hill_geometry(corner, extent, height)
     scene.add(TriangleMesh3D(vertices=vertices, triangles=triangles, material=HILL_MATERIAL, cull_back_faces=False))
+    if not HILL_GRID_ENABLED:
+        return
     x_divisions = int(extent[0] / GRID_STEP)
     y_divisions = int(extent[1] / GRID_STEP)
     row_width = x_divisions + 1
@@ -619,7 +647,7 @@ def add_rolling_hill(
 
 def create_road_texture(context: dcg.Context) -> dcg.Texture | None:
     create_windmill_textures(context)
-    if not ROAD_TEXTURE_ENABLED:
+    if not (ROAD_ENABLED and ROAD_TEXTURE_ENABLED):
         return None
     width, height = ROAD_TEXTURE_SIZE
     pixels = bytearray(width * height * 4)
@@ -681,30 +709,32 @@ def build_scene(road_texture: object | None = None) -> tuple[Scene3D, Box3D]:
         if road_texture is not None
         else None
     )
-    for road_start in range(0, int(WORLD_H), int(ROAD_SEGMENT_LENGTH)):
-        scene.add(
-            Box3D(
-                center=(
-                    WORLD_W * 0.5,
-                    road_start + ROAD_SEGMENT_LENGTH * 0.5,
-                    0.2,
-                ),
-                size=(ROAD_WIDTH, ROAD_SEGMENT_LENGTH, 0.4),
-                material=road_material,
-                face_materials=(None, road_top_material, None, None, None, None),
+    if ROAD_ENABLED:
+        for road_start in range(0, int(WORLD_H), int(ROAD_SEGMENT_LENGTH)):
+            scene.add(
+                Box3D(
+                    center=(
+                        WORLD_W * 0.5,
+                        road_start + ROAD_SEGMENT_LENGTH * 0.5,
+                        0.2,
+                    ),
+                    size=(ROAD_WIDTH, ROAD_SEGMENT_LENGTH, 0.4),
+                    material=road_material,
+                    face_materials=(None, road_top_material, None, None, None, None),
+                )
             )
-        )
 
-    for center, size, height, roof_type in HOUSE_SPECS:
-        if roof_type == "gable":
-            add_gable_house(scene, center, size, height)
-        else:
-            add_hip_house(scene, center, size, height)
+    if HOUSES_ENABLED:
+        for center, size, height, roof_type in HOUSE_SPECS:
+            if roof_type == "gable":
+                add_gable_house(scene, center, size, height)
+            else:
+                add_hip_house(scene, center, size, height)
     if ARCH_ENABLED:
         add_arch(scene)
     if TOWER_ENABLED:
         add_tower(scene, center=TOWER_CENTER, size=TOWER_SIZE, height=TOWER_HEIGHT, roof_height=TOWER_ROOF_HEIGHT)
-        if _WINDMILL_TEXTURES:
+        if WINDMILL_ENABLED and _WINDMILL_TEXTURES:
             scene.add(
                 Billboard3D(
                     anchor=(TOWER_CENTER[0], TOWER_CENTER[1], TOWER_HEIGHT + TOWER_ROOF_HEIGHT - 2.0),
@@ -740,29 +770,30 @@ def build_scene(road_texture: object | None = None) -> tuple[Scene3D, Box3D]:
             segments=FLOATING_ISLAND_SEGMENTS,
         )
 
-    for coordinate in range(0, int(WORLD_W) + 1, GRID_STEP):
-        major = coordinate % MAJOR_GRID_STEP == 0
-        scene.add(
-            Line3D(
-                start=(float(coordinate), 0.0, 0.5),
-                end=(float(coordinate), WORLD_H, 0.5),
-                color=GRID_MAJOR_COLOR if major else GRID_MINOR_COLOR,
-                thickness=-2.0 if major else -1.0,
-                render_layer=LineRenderLayer.UTILITY,
+    if FLAT_GRID_ENABLED:
+        for coordinate in range(0, int(WORLD_W) + 1, GRID_STEP):
+            major = coordinate % MAJOR_GRID_STEP == 0
+            scene.add(
+                Line3D(
+                    start=(float(coordinate), 0.0, 0.5),
+                    end=(float(coordinate), WORLD_H, 0.5),
+                    color=GRID_MAJOR_COLOR if major else GRID_MINOR_COLOR,
+                    thickness=-2.0 if major else -1.0,
+                    render_layer=LineRenderLayer.UTILITY,
+                )
             )
-        )
 
-    for coordinate in range(0, int(WORLD_H) + 1, GRID_STEP):
-        major = coordinate % MAJOR_GRID_STEP == 0
-        scene.add(
-            Line3D(
-                start=(0.0, float(coordinate), 0.5),
-                end=(WORLD_W, float(coordinate), 0.5),
-                color=GRID_MAJOR_COLOR if major else GRID_MINOR_COLOR,
-                thickness=-2.0 if major else -1.0,
-                render_layer=LineRenderLayer.UTILITY,
+        for coordinate in range(0, int(WORLD_H) + 1, GRID_STEP):
+            major = coordinate % MAJOR_GRID_STEP == 0
+            scene.add(
+                Line3D(
+                    start=(0.0, float(coordinate), 0.5),
+                    end=(WORLD_W, float(coordinate), 0.5),
+                    color=GRID_MAJOR_COLOR if major else GRID_MINOR_COLOR,
+                    thickness=-2.0 if major else -1.0,
+                    render_layer=LineRenderLayer.UTILITY,
+                )
             )
-        )
 
     if POSITION_LABELS_ENABLED:
         for x_coordinate in range(0, int(WORLD_W) + 1, MAJOR_GRID_STEP):
@@ -778,20 +809,21 @@ def build_scene(road_texture: object | None = None) -> tuple[Scene3D, Box3D]:
                     )
                 )
 
-    scene.add(
-        Polyline3D(
-            points=(
-                (0.0, 0.0, 0.7),
-                (WORLD_W, 0.0, 0.7),
-                (WORLD_W, WORLD_H, 0.7),
-                (0.0, WORLD_H, 0.7),
-            ),
-            color=BORDER_COLOR,
-            thickness=-3.0,
-            closed=True,
-            render_layer=LineRenderLayer.UTILITY,
+    if BORDER_ENABLED:
+        scene.add(
+            Polyline3D(
+                points=(
+                    (0.0, 0.0, 0.7),
+                    (WORLD_W, 0.0, 0.7),
+                    (WORLD_W, WORLD_H, 0.7),
+                    (0.0, WORLD_H, 0.7),
+                ),
+                color=BORDER_COLOR,
+                thickness=-3.0,
+                closed=True,
+                render_layer=LineRenderLayer.UTILITY,
+            )
         )
-    )
 
     avatar = Box3D(
         center=(AVATAR_START_XY[0], AVATAR_START_XY[1], 0.0),

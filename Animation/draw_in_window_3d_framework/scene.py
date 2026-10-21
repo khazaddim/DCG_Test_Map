@@ -7,6 +7,7 @@ from time import perf_counter
 from typing import Any, Callable, Iterable, Literal, Protocol, Sequence, TypeAlias, runtime_checkable
 
 from .math3d import DEFAULT_LIGHT_DIRECTION, Camera3D, Color, Vec2, Vec3, Viewport, cross, dot, subtract
+from .profiling import StageMeasurements
 
 
 ColorValue: TypeAlias = Color | int
@@ -628,7 +629,10 @@ class OverlapDepthSorter:
         self.use_sweep_and_prune = use_sweep_and_prune
         self.last_sort_stats: SortStats | None = None
 
-    def sort(self, entries: Iterable[ProjectedRenderEntry], frame: FrameContext | None = None) -> SortResult:
+    def sort(
+        self, entries: Iterable[ProjectedRenderEntry], frame: FrameContext | None = None,
+        *, measurements: StageMeasurements | None = None,
+    ) -> SortResult:
         ordered_entries = tuple(entries)
         if frame is None:
             self.last_sort_stats = None
@@ -636,9 +640,16 @@ class OverlapDepthSorter:
 
         start_time = perf_counter()
         candidate_strategy = "sweep_and_prune" if self.use_sweep_and_prune else "all_pairs"
-        candidate_pairs, candidate_metrics, bounds_by_index = self.generate_candidates(ordered_entries)
-        edges = self.test_overlaps(ordered_entries, candidate_pairs, frame)
-        result, accepted_edge_count = self.order_entries(ordered_entries, edges)
+        if measurements is None:
+            candidate_pairs, candidate_metrics, bounds_by_index = self.generate_candidates(ordered_entries)
+            edges = self.test_overlaps(ordered_entries, candidate_pairs, frame)
+            result, accepted_edge_count = self.order_entries(ordered_entries, edges)
+        else:
+            candidate_pairs, candidate_metrics, bounds_by_index = measurements.measure(
+                "broad_phase", self.generate_candidates, ordered_entries,
+            )
+            edges = measurements.measure("exact_tests", self.test_overlaps, ordered_entries, candidate_pairs, frame)
+            result, accepted_edge_count = measurements.measure("topological_ordering", self.order_entries, ordered_entries, edges)
         sort_stats = _sort_stats(
             ordered_entries,
             bounds_by_index=bounds_by_index,

@@ -7,6 +7,7 @@ from typing import Iterable
 import dearcygui as dcg
 
 from .math3d import Camera3D, ProjectionPipeline, Vec2, Viewport, shade_directional
+from .profiling import StageMeasurements
 from .scene import (
     AnimatedImageMaterial,
     AnimationProjection,
@@ -154,10 +155,16 @@ class CpuRenderer3D:
         camera: Camera3D,
         viewport: Viewport,
         persistent_overlay_target: dcg.DrawingList | None = None,
+        *,
+        measurements: StageMeasurements | None = None,
     ) -> RenderStats:
         frame = FrameContext(camera=camera, viewport=viewport)
-        packets = self.collect_packets(scene, frame)
-        entries, clipped_count = self.project_packets(packets, frame)
+        if measurements is None:
+            packets = self.collect_packets(scene, frame)
+            entries, clipped_count = self.project_packets(packets, frame)
+        else:
+            packets = measurements.measure("scene_collection", self.collect_packets, scene, frame)
+            entries, clipped_count = measurements.measure("projection_clipping", self.project_packets, packets, frame)
         overlay_entries: list[ProjectedRenderEntry] = []
         background_entries: list[ProjectedRenderEntry] = []
         projected_entries: list[ProjectedRenderEntry] = []
@@ -175,7 +182,12 @@ class CpuRenderer3D:
                 continue
             projected_entries.append(entry)
 
-        sorted_result = self.sorter.sort(projected_entries, frame)
+        if measurements is None:
+            sorted_result = self.sorter.sort(projected_entries, frame)
+        elif isinstance(self.sorter, OverlapDepthSorter):
+            sorted_result = self.sorter.sort(projected_entries, frame, measurements=measurements)
+        else:
+            sorted_result = measurements.measure("topological_ordering", self.sorter.sort, projected_entries, frame)
         underlay_entries = tuple(entry for entry in sorted_result.entries if self._is_utility_underlay(entry))
         primary_entries = tuple(entry for entry in sorted_result.entries if not self._is_utility_underlay(entry))
         polygon_entries = tuple(entry for entry in primary_entries if entry.kind == "polygon")
@@ -185,11 +197,18 @@ class CpuRenderer3D:
             emission_entries.extend(background_entries)
         emission_entries.extend(utility_line_entries)
         emission_entries.extend(primary_entries)
-        prepared = self.prepare_line_occlusion(emission_entries, polygon_entries, frame)
-        emitted_count = self.emit_entries(
-            context, target, scene, frame, prepared,
-            persistent_overlay_target, overlay_entries,
-        )
+        if measurements is None:
+            prepared = self.prepare_line_occlusion(emission_entries, polygon_entries, frame)
+            emitted_count = self.emit_entries(
+                context, target, scene, frame, prepared,
+                persistent_overlay_target, overlay_entries,
+            )
+        else:
+            prepared = measurements.measure("line_occlusion", self.prepare_line_occlusion, emission_entries, polygon_entries, frame)
+            emitted_count = measurements.measure(
+                "node_creation", self.emit_entries, context, target, scene, frame, prepared,
+                persistent_overlay_target, overlay_entries,
+            )
 
         return RenderStats(
             packet_count=len(packets),

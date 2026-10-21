@@ -6,12 +6,13 @@ Reload world to replace the retained scene without rebuilding the UI.
 
 from __future__ import annotations
 
-from dataclasses import replace
-import importlib
+from dataclasses import dataclass, replace
+import importlib.util
 from pathlib import Path
 import sys
 import traceback
 from types import ModuleType
+from threading import RLock
 
 import dearcygui as dcg
 
@@ -21,6 +22,8 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from Animation.draw_in_window_3d_framework import Camera3D, CpuRenderer3D, DrawInWindow3D, EdgeBandFollowController, OverlapDepthSorter
+from Animation.draw_in_window_3d_framework import Box3D, CollisionWorld, Scene3D, TerrainSurface, TraversalSettings
+from Animation.draw_in_window_3d_framework.profiling import RenderTelemetry
 import Animation.ported_demos.town_hot_reload_world as world
 
 
@@ -35,35 +38,87 @@ CONTROLS_HEIGHT = 250.0
 USE_SWEEP_AND_PRUNE = True
 
 
+@dataclass(frozen=True)
+class TownWorld:
+    module: ModuleType
+    road_texture: dcg.Texture | None
+    scene: Scene3D
+    avatar: Box3D
+    collisions: CollisionWorld
+    terrain: TerrainSurface | None
+    traversal: TraversalSettings
+    flags: dict[str, bool]
+
+
+def load_world_candidate(module: ModuleType) -> ModuleType:
+    """Execute fresh source without mutating the active module's globals."""
+    if module.__file__ is None:
+        raise ValueError("Reloadable world must have a source file")
+    path = Path(module.__file__)
+    spec = importlib.util.spec_from_file_location(module.__name__, path)
+    if spec is None:
+        raise ImportError(f"Cannot load world source: {path}")
+    candidate = importlib.util.module_from_spec(spec)
+    # Read source directly so rapid same-size edits cannot reuse stale bytecode.
+    exec(compile(path.read_bytes(), str(path), "exec"), candidate.__dict__)
+    return candidate
+
+
+def build_world(context: dcg.Context, module: ModuleType) -> TownWorld:
+    texture = module.create_road_texture(context)
+    scene, avatar = module.build_scene(texture)
+    collisions = module.build_collision_world()
+    terrain = module.build_terrain_surface()
+    traversal = module.build_traversal_settings()
+    flags = module.effective_world_flags()
+    resolution = collisions.resolve_movement(
+        module.AabbFootprint.from_center(
+            avatar.center[0], avatar.center[1], module.AVATAR_SIZE, module.AVATAR_SIZE,
+        ),
+        x=avatar.center[0], y=avatar.center[1], settings=traversal,
+    )
+    if resolution.accepted:
+        avatar.center = resolution.position
+    return TownWorld(module, texture, scene, avatar, collisions, terrain, traversal, flags)
+
+
 class HotReloadTownController:
     def __init__(
         self,
         viewport: DrawInWindow3D,
         avatar,
         context: dcg.Context,
-        road_texture: dcg.Texture,
+        road_texture: dcg.Texture | None,
         world_module: ModuleType,
         collisions,
         status: dcg.Text,
         reload_status: dcg.Text,
+        *,
+        prepared_world: TownWorld | None = None,
     ) -> None:
+        self._world_lock = RLock()
         self.viewport = viewport
         self.avatar = avatar
         self.context = context
         self.road_texture = road_texture
         self.world_module = world_module
         self.collisions = collisions
-        self.terrain = world_module.build_terrain_surface()
-        self.traversal_settings = world_module.build_traversal_settings()
+        self.terrain = prepared_world.terrain if prepared_world else world_module.build_terrain_surface()
+        self.traversal_settings = prepared_world.traversal if prepared_world else world_module.build_traversal_settings()
+        self.effective_flags = dict(prepared_world.flags if prepared_world else world_module.effective_world_flags())
+        self.scene_generation = 1
         self.status = status
         self.reload_status = reload_status
         self.viewport.terrain = self.terrain
         self._anchor_avatar_to_support()
         self._configure_follow()
         self._update_status()
+        if viewport.telemetry is not None:
+            viewport.telemetry.set_scene(self.scene_generation, self.effective_flags)
 
     def on_resize(self, *_: object) -> None:
-        self.viewport.invalidate()
+        with self._world_lock:
+            self.viewport.invalidate()
 
     def move_left(self, *_: object) -> None:
         self._move(-self.world_module.GRID_STEP, 0.0)
@@ -87,36 +142,58 @@ class HotReloadTownController:
         self._set_camera(zoom=float(sender.value))
 
     def reset_view(self, *_: object) -> None:
-        self.avatar.center = self._world_center()
-        self._set_camera(target=self.avatar.center, yaw_deg=0.0, pitch_deg=52.0, zoom=ZOOM_DEFAULT)
+        with self._world_lock:
+            self.avatar.center = self._world_center()
+            self._set_camera(target=self.avatar.center, yaw_deg=0.0, pitch_deg=52.0, zoom=ZOOM_DEFAULT)
 
     def reload_world(self, *_: object) -> None:
         """Replace the scene only after the edited world module builds cleanly."""
+        with self._world_lock:
+            self._reload_world()
+
+    def _reload_world(self) -> None:
         try:
-            importlib.invalidate_caches()
-            candidate_module = importlib.reload(self.world_module)
-            candidate_texture = candidate_module.create_road_texture(self.context)
-            candidate_scene, candidate_avatar = candidate_module.build_scene(candidate_texture)
-            candidate_collisions = candidate_module.build_collision_world()
+            candidate = build_world(self.context, load_world_candidate(self.world_module))
+            follow = EdgeBandFollowController(
+                viewport=self.viewport,
+                band_x=self.viewport.viewport.width * 0.2,
+                band_y=self.viewport.viewport.height * 0.2,
+                world_bounds=(0.0, 0.0, candidate.module.WORLD_W, candidate.module.WORLD_H),
+                terrain=candidate.terrain,
+            )
+            target = self.viewport.camera.target
+            camera = replace(self.viewport.camera, target=(
+                max(0.0, min(candidate.module.WORLD_W, target[0])),
+                max(0.0, min(candidate.module.WORLD_H, target[1])),
+                target[2],
+            ))
         except Exception as error:
             self.reload_status.value = f"Reload failed: {type(error).__name__}: {error}"
             traceback.print_exc()
             return
 
-        self.world_module = candidate_module
-        self.viewport.scene = candidate_scene
-        self.avatar = candidate_avatar
-        self.road_texture = candidate_texture
-        self.collisions = candidate_collisions
-        self.terrain = candidate_module.build_terrain_surface()
-        self.traversal_settings = candidate_module.build_traversal_settings()
+        self.world_module = candidate.module
+        self.viewport.scene = candidate.scene
+        self.avatar = candidate.avatar
+        self.road_texture = candidate.road_texture
+        self.collisions = candidate.collisions
+        self.terrain = candidate.terrain
+        self.traversal_settings = candidate.traversal
+        self.effective_flags = dict(candidate.flags)
+        self.scene_generation += 1
         self.viewport.terrain = self.terrain
-        self._anchor_avatar_to_support()
-        self._configure_follow()
-        self._set_camera(target=self._clamped_target(self.viewport.camera.target))
+        self.follow = follow
+        self.viewport.set_camera(camera)
+        if self.viewport.telemetry is not None:
+            self.viewport.telemetry.set_scene(self.scene_generation, self.effective_flags)
+        self._update_status()
         self.reload_status.value = "Reloaded world definition."
 
     def _move(self, dx: float, dy: float) -> None:
+        with self._world_lock:
+            self._move_in_world(dx, dy)
+
+    def _move_in_world(self, dx: float, dy: float) -> None:
         half_size = self.world_module.AVATAR_SIZE * 0.5
         candidate_xy = (
             max(half_size, min(self.world_module.WORLD_W - half_size, self.avatar.center[0] + dx)),
@@ -166,8 +243,9 @@ class HotReloadTownController:
         )
 
     def _set_camera(self, **changes: object) -> None:
-        self.viewport.set_camera(replace(self.viewport.camera, **changes))
-        self._update_status()
+        with self._world_lock:
+            self.viewport.set_camera(replace(self.viewport.camera, **changes))
+            self._update_status()
 
     def _anchor_avatar_to_support(self) -> None:
         resolution = self.collisions.resolve_movement(
@@ -185,9 +263,10 @@ class HotReloadTownController:
             self.avatar.center = resolution.position
 
     def render_if_needed(self) -> None:
-        stats = self.viewport.render_if_needed()
-        if stats is not None:
-            self._update_status()
+        with self._world_lock:
+            stats = self.viewport.render_if_needed()
+            if stats is not None:
+                self._update_status()
 
     def _update_status(self) -> None:
         camera = self.viewport.camera
@@ -209,11 +288,14 @@ class HotReloadTownController:
         )
 
 
-def build_ui(context: dcg.Context) -> HotReloadTownController:
-    road_texture = world.create_road_texture(context)
-    scene, avatar = world.build_scene(road_texture)
-    collisions = world.build_collision_world()
-    terrain = world.build_terrain_surface()
+def build_ui(
+    context: dcg.Context, *, telemetry: RenderTelemetry | None = None,
+    use_sweep_and_prune: bool | None = None,
+    primary: bool = True,
+) -> HotReloadTownController:
+    prepared = build_world(context, world)
+    road_texture, scene, avatar = prepared.road_texture, prepared.scene, prepared.avatar
+    collisions, terrain = prepared.collisions, prepared.terrain
     initial_target = avatar.center if terrain is None else (avatar.center[0], avatar.center[1], avatar.center[2])
     initial_camera = Camera3D(
         target=initial_target,
@@ -222,17 +304,23 @@ def build_ui(context: dcg.Context) -> HotReloadTownController:
         zoom=ZOOM_DEFAULT,
     )
     renderer = CpuRenderer3D(
-        sorter=OverlapDepthSorter(use_sweep_and_prune=USE_SWEEP_AND_PRUNE)
+        sorter=OverlapDepthSorter(
+            use_sweep_and_prune=USE_SWEEP_AND_PRUNE if use_sweep_and_prune is None else use_sweep_and_prune,
+        )
     )
 
-    with dcg.Window(context, label="Town hot-reload experiment", width="fillx", height="filly", primary=True) as window:
+    with dcg.Window(
+        context, label="Town hot-reload experiment",
+        width="fillx" if primary else VIEW_W + 80, height="filly",
+        primary=primary, x=0, y=0,
+    ) as window:
         with dcg.VerticalLayout(context, parent=window) as content:
             dcg.Text(context, parent=content, value="Edit town_hot_reload_world.py, then reload the world.")
             with dcg.ChildWindow(
                 context,
                 parent=content,
                 width="fillx",
-                height=f"window.height-{CONTROLS_HEIGHT:.0f}",
+                height=f"window.height-{CONTROLS_HEIGHT + (0.0 if primary else 65.0):.0f}",
                 no_scrollbar=True,
             ) as viewport_area:
                 viewport = DrawInWindow3D(
@@ -244,6 +332,7 @@ def build_ui(context: dcg.Context) -> HotReloadTownController:
                     camera=initial_camera,
                     renderer=renderer,
                     terrain=terrain,
+                    telemetry=telemetry,
                 )
 
             with dcg.ChildWindow(
@@ -255,7 +344,10 @@ def build_ui(context: dcg.Context) -> HotReloadTownController:
             ) as controls:
                 status = dcg.Text(context, parent=controls, value="")
                 reload_status = dcg.Text(context, parent=controls, value="World definition loaded.")
-                controller = HotReloadTownController(viewport, avatar, context, road_texture, world, collisions, status, reload_status)
+                controller = HotReloadTownController(
+                    viewport, avatar, context, road_texture, world, collisions, status, reload_status,
+                    prepared_world=prepared,
+                )
                 dcg.Button(context, parent=controls, label="Reload world", callback=controller.reload_world)
                 dcg.Slider(
                     context,

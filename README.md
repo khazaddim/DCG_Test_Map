@@ -78,6 +78,118 @@ renderer with a per-pixel depth buffer.
 
 For the larger reference demo, inspect `Demos/main_demo/drawings.py`.
 
+## Interactive town CPU profiling
+
+Run the [profiling town](Animation/ported_demos/town_hot_reload_profiling.py):
+
+```powershell
+.\.venv\Scripts\python.exe Animation\ported_demos\town_hot_reload_profiling.py
+```
+
+It reuses the [original host](Animation/ported_demos/town_hot_reload.py) and
+[world module](Animation/ported_demos/town_hot_reload_world.py); the original
+host still starts without instrumentation. Both retain yaw/pitch/zoom sliders,
+arrow-key movement, terrain following, reset, and the startup
+`USE_SWEEP_AND_PRUNE` switch. Move/resize the profiling window as needed.
+
+### Comparing world features
+
+Edit world constants, save, and press **Reload world**. Existing feature flags
+are retained. New independently editable switches default to `True`:
+
+| Switch | What it removes when false |
+| --- | --- |
+| `HOUSES_ENABLED` | House walls/roofs and their collision blockers |
+| `ROAD_ENABLED` | Road geometry; independent of `ROAD_TEXTURE_ENABLED` |
+| `FLAT_GRID_ENABLED` | Flat utility grid lines |
+| `HILL_GRID_ENABLED` | Hill grid lines, not the hill mesh or support surface |
+| `BORDER_ENABLED` | Decorative border, not world movement bounds |
+| `MESH_EDGES_ENABLED` | Explicit mesh-edge overlays, not meshes or material face outlines |
+| `WINDMILL_ENABLED` | Animated tower billboard and its textures, not the tower |
+
+`HILL_ENABLED` controls geometry and support; `TERRAIN_FOLLOWING_ENABLED`
+controls traversal policy. Effective flags show dependent features as off when
+their parent is absent (for example, no tower means no windmill). The ground and
+controllable avatar remain present. Road geometry is decorative and retains its
+original non-blocking, non-support collision behavior.
+
+Reload reads fresh source into an isolated candidate module, then builds
+resources, scene, collisions, terrain, traversal settings, avatar support, and
+configuration before replacing active references. The active module retains its
+textures. A failed candidate leaves the previous module, world, resources,
+configuration, and measurement history intact, with a visible error and traceback.
+The panel displays the last successful configuration and scene generation.
+
+### Panel and timing semantics
+
+- **Enable / disable telemetry** starts/stops recording; disabled is the default.
+  **Pause / resume** suspends sampling without changing scene interaction.
+  Both preserve existing samples. **Reset** clears samples and failure diagnostics,
+  not the scene or a running detailed capture.
+- The rolling window contains the last **120 successful published rebuilds**,
+  not GUI frames. Idle frames add nothing; instrumented failures increment a
+  separate counter and preserve the last published frame.
+- Bars rank exclusive stage means; values are latest/mean/P95 **milliseconds**.
+  P95 uses nearest rank, `sorted[ceil(0.95 * N) - 1]`. Skipped stages are zero.
+  Total spans back-layer preparation through publication/obsolete-node cleanup.
+  `unaccounted = total - sum(exclusive stages)` includes orchestration overhead.
+  Sorting stages are not counted again as an inclusive parent duration.
+- Collection, projection/clipping, broad phase, exact tests, ordering, line
+  occlusion, node creation, and both cleanup regions are measured on the real
+  rendering path, including streams and persistent overlay synchronization.
+  For average/custom sorters, the complete sort is charged to ordering and the
+  overlap-specific regions remain zero. Counters retain `RenderStats` semantics:
+  projected count excludes utility/background/persistent-overlay entries routed
+  around sorting; emitted count includes the background and regular draw nodes,
+  but not persistent-overlay nodes managed separately.
+- Successful reloads reset the window. Changes in viewport size, strategy, or
+  baseline/capture mode start a new window at the next successful sampled rebuild.
+  Ordinary camera rotations and movement stay in one window; camera, viewport,
+  strategy, effective flags, configuration hash, and generation accompany each sample.
+- The panel refreshes at most **5 Hz**, outside rebuild timing. Its previous update
+  cost is displayed separately. Controls only change state or enqueue actions;
+  panel updates never invalidate the scene or force an extra render.
+
+### Detailed captures and exports
+
+**Start capture** / **Stop and save** records `cProfile` only while executing
+actual rebuilds on the render thread. It excludes idle waits, panel refreshes,
+world/resource construction, and file writing. It works independently of telemetry
+enable/pause; telemetry sampled during capture is marked `cprofile`, never mixed
+with baseline samples. Closing the host attempts to save any pending capture.
+An empty capture reports that no rebuilds occurred instead of creating an invalid
+profile. Save failures remain visible and retain capture data for retry; shutdown
+errors also print a traceback.
+
+Files are written with unique names under gitignored `profiling-output\town\`:
+
+- **Export JSON:** schema version 1, integer nanosecond durations, bounded raw
+  samples, workload counters, failure diagnostics, and configuration context.
+- **Export CSV:** one successful sample per row, schema version and units in
+  each row, stage-duration columns, and JSON-encoded camera/viewport/flags/counters
+  cells. An empty window produces a header-only CSV.
+- **Detailed `.prof`:** readable by `pstats` and SnakeViz, whose timing units
+  are seconds. The adjacent `.prof.json` includes schema, render-thread ID,
+  total attempt count, and the last 120 attempt contexts (including failures,
+  workload counters on success, and an explicit omitted-context count).
+  The profile aggregates the entire capture even when context history is bounded.
+
+With SnakeViz installed in the chosen environment:
+
+```powershell
+.\.venv\Scripts\python.exe -m snakeviz profiling-output\town\<capture-name>.prof
+```
+
+For reproducible comparisons, fix viewport dimensions and sorter; use reset
+and the same camera path (for example yaw 0/30/60/90, pitch 35/52/65, zoom 3.5).
+Change one feature, reload, warm up once, reset telemetry, and replay the same
+path. Keep initial/reload resource setup and detailed captures out of baseline
+latency comparisons. Compare counters as well as durations. These are CPU-side
+elapsed timings including synchronous native calls, **not GPU timings or
+time-to-display**. Automated correctness tests do not establish an instrumentation
+overhead budget or representative performance evidence; those remain separate
+Milestone 5.5 validation/evidence tasks.
+
 ## CPU 3D pipeline profiling fixtures
 
 The opt-in [pipeline benchmark](Animation/ported_demos/benchmark_pipeline.py)

@@ -36,6 +36,7 @@ from .collision import (
 	TraversalSettings,
 )
 from .terrain import MeshTerrainSurface, TerrainSample, TerrainSurface
+from .profiling import RenderTelemetry, StageMeasurements
 from .scene import (
 	AverageDepthSorter,
 	AnimatedImageMaterial,
@@ -108,6 +109,8 @@ __all__ = [
 	"Renderable3D",
 	"RenderSorter",
 	"RenderStats",
+	"RenderTelemetry",
+	"StageMeasurements",
 	"ScalarFieldMaterial",
 	"Scene3D",
 	"SolidMaterial",
@@ -140,6 +143,7 @@ try:
 	from .controllers import EdgeBandFollowController
 	from .renderer import CpuRenderer3D
 	from .widget import DrawInWindow3D, FramePublisher, PolygonStyle
+	from .profiling_panel import ProfilingPanel
 except ModuleNotFoundError as exc:
 	missing_name = exc.name or ""
 	if missing_name != "dearcygui" and "dearcygui" not in str(exc):
@@ -151,4 +155,5 @@ else:
 		"EdgeBandFollowController",
 		"FramePublisher",
 		"PolygonStyle",
+		"ProfilingPanel",
 	])
