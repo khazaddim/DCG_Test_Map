@@ -21,6 +21,8 @@ from Animation.draw_in_window_3d_framework.profiling_panel import ProfilingPanel
 from Animation.ported_demos.benchmark_pipeline import build_fixture
 from Animation.ported_demos import town_hot_reload as host
 from Animation.ported_demos import town_hot_reload_profiling as profiling_host
+from Animation.ported_demos import open_room_hot_reload_world
+from Animation.ported_demos import town_hot_reload_world
 
 
 @pytest.fixture
@@ -334,7 +336,26 @@ def test_panel_throttle_controls_shutdown_and_no_extra_renders(viewport, tmp_pat
 
 
 def fresh_world():
-    return host.load_world_candidate(host.world)
+    return host.load_world_candidate(town_hot_reload_world)
+
+
+def test_selected_open_room_world_has_a_complete_reload_bundle() -> None:
+    assert host.WORLD_MODULE_NAME == "Animation.ported_demos.open_room_hot_reload_world"
+    assert host.world is open_room_hot_reload_world
+    prepared = host.build_world(dcg.Context(), host.world)
+
+    assert prepared.scene.object_count > 1
+    assert prepared.avatar in tuple(prepared.scene.iter_visible())
+    assert {str(collider.owner) for collider in prepared.collisions.colliders} == {
+        "back wall", "left wall", "table", "chair", "bed", "bookcase",
+    }
+    assert prepared.terrain is None
+    assert prepared.traversal.mode is TerrainMode.FLAT
+    assert prepared.flags == {
+        "ROOM_ENABLED": True, "FURNITURE_ENABLED": True,
+        "BACK_WALL_ENABLED": True, "LEFT_WALL_ENABLED": True,
+        "FRONT_WALL_ENABLED": False, "RIGHT_WALL_ENABLED": False,
+    }
 
 
 def test_new_world_defaults_and_all_disabled_geometry() -> None:
@@ -504,7 +525,6 @@ def test_isolated_source_reload_does_not_mutate_active_globals(tmp_path) -> None
 
 
 def test_original_and_profiling_hosts_share_defaults(monkeypatch) -> None:
-    monkeypatch.setattr(host.world, "WINDMILL_ENABLED", False)
     context = dcg.Context()
     original = host.build_ui(context)
     profiled, panel = profiling_host.build_ui(context)

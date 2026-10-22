@@ -1,12 +1,14 @@
-"""DearCyGui town scene host with a reloadable world-definition module.
+"""DearCyGui scene host with a reloadable, selectable world-definition module.
 
-Edit ``town_hot_reload_world.py`` while this application is running, then use
-Reload world to replace the retained scene without rebuilding the UI.
+Set ``WORLD_MODULE_NAME`` to a world module, edit that module while this
+application is running, then use Reload world to replace the retained scene
+without rebuilding the UI.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
+import importlib
 import importlib.util
 from pathlib import Path
 import sys
@@ -24,8 +26,11 @@ if str(REPO_ROOT) not in sys.path:
 from Animation.draw_in_window_3d_framework import Camera3D, CpuRenderer3D, DrawInWindow3D, EdgeBandFollowController, OverlapDepthSorter
 from Animation.draw_in_window_3d_framework import Box3D, CollisionWorld, Scene3D, TerrainSurface, TraversalSettings
 from Animation.draw_in_window_3d_framework.profiling import RenderTelemetry
-import Animation.ported_demos.town_hot_reload_world as world
 
+
+# Change this one value to select the editable world loaded by this host.
+WORLD_MODULE_NAME = "Animation.ported_demos.open_room_hot_reload_world"
+world = importlib.import_module(WORLD_MODULE_NAME)
 
 VIEW_W = 900
 VIEW_H = 600
@@ -310,12 +315,12 @@ def build_ui(
     )
 
     with dcg.Window(
-        context, label="Town hot-reload experiment",
+        context, label="World hot-reload experiment",
         width="fillx" if primary else VIEW_W + 80, height="filly",
         primary=primary, x=0, y=0,
     ) as window:
         with dcg.VerticalLayout(context, parent=window) as content:
-            dcg.Text(context, parent=content, value="Edit town_hot_reload_world.py, then reload the world.")
+            dcg.Text(context, parent=content, value=f"Edit {WORLD_MODULE_NAME.rsplit('.', 1)[-1]}.py, then reload the world.")
             with dcg.ChildWindow(
                 context,
                 parent=content,

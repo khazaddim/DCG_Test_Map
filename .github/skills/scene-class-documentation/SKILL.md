@@ -68,6 +68,35 @@ Non-primary or out-of-scope surfaces for this phase:
 If a request can be satisfied with a flat color and outline, stay on
 `SolidMaterial`. That is the safest fallback for smaller models.
 
+## Painter-order geometry safety
+
+This CPU renderer submits projected 2D primitives to DearCyGui; it has no
+per-pixel depth buffer and does not split intersecting faces. Screen-space
+overlap is expected, but do not author interpenetrating boxes or overlapping
+coplanar surfaces. A local depth-order cycle triggers the existing scene-wide
+average-depth fallback, which can draw the floor over unrelated furniture.
+
+- `Box3D.center[2]` is the base: the occupied height is `[z, z + height]`.
+- Build shelves from separate sides, back, and shelf boards, not a solid cabinet
+  with decorative boards/books embedded in it.
+- Leave small positive clearances between separate parts, including books and
+  the shelf above, wall corners, trim, tabletops, and legs. The room example uses
+  0.2 world units; this is an authoring clearance, not a universal renderer limit.
+- Use adjacent floor patches for a flush rug/inlay. Do not stack a coplanar rug
+  over a full floor, or raise a thin rug through the moving avatar. A textured
+  thin box can occupy the cutout with its top at floor height and its thickness
+  below ground, as in the open room example.
+- Keep collision footprints aligned with the rebuilt furniture.
+- Verify world-space bounds and sweep camera yaw at several pitches, including
+  the failing angles. Require `cycle_detected=False` and verify accepted depth
+  constraints are respected. Non-intersection alone does not guarantee acyclic
+  painter ordering; splitting or simplifying geometry may still be necessary.
+
+Reference: [open room world](../../../Animation/ported_demos/open_room_hot_reload_world.py)
+and its [geometry and rotation tests](../../../tests/test_open_room_hot_reload_world.py).
+The regression sweep covers yaw every 5 degrees plus 86.5 degrees, six pitches,
+and two viewport widths at the default zoom; it is not proof for all cameras.
+
 ## Class guides
 
 ### `GroundPlane3D`

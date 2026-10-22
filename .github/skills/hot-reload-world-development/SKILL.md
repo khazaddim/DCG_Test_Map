@@ -242,10 +242,20 @@ bundle field and increments the generation, and that a failing candidate leaves
 the active module, scene, resources, collisions, terrain, flags, and generation
 unchanged.
 
+World loading tests are not visibility tests. When editing authored geometry,
+also follow the [painter-order geometry safety guidance](../scene-class-documentation/SKILL.md#painter-order-geometry-safety).
+Intersecting room parts can trigger the renderer's existing cycle fallback even
+when hot reload is working correctly. Check part clearances and camera rotations:
+
+```powershell
+& .\.venv\Scripts\python.exe -m pytest tests\test_open_room_hot_reload_world.py tests\test_draw_in_window_3d_profiling.py -q
+```
+
 ## Reference
 
 - Host: `Animation/ported_demos/town_hot_reload.py`
 - Reloadable world: `Animation/ported_demos/town_hot_reload_world.py`
+- Non-intersecting room world: `Animation/ported_demos/open_room_hot_reload_world.py`
 - Profiling host variant: `Animation/ported_demos/town_hot_reload_profiling.py`
 - Textured box-face example: `Animation/ported_demos/collision_two_boxes.py`
 - Tests: `tests/test_draw_in_window_3d_profiling.py`
