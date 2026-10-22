@@ -1,6 +1,6 @@
 ---
 name: hot-reload-world-development
-description: "Use when: building or revising a DearCyGui hot-reload workflow where editable scene/world definitions are reloaded without restarting the persistent UI, camera controls, or event handlers. Covers importlib reload, candidate-scene swaps, texture/resource ownership, and reload failure preservation."
+description: "Use when: building or revising a DearCyGui hot-reload workflow where editable scene/world definitions are reloaded without restarting the persistent UI, camera controls, or event handlers. Covers isolated candidate-module loading, complete world-bundle swaps (scene, resources, collisions, terrain, traversal, feature flags), texture/resource ownership, world locking, scene generations for telemetry, and reload failure preservation."
 ---
 
 # Hot-Reloadable World Development
@@ -17,10 +17,11 @@ world safely:
 - The **host module** owns the `dcg.Context`, windows, viewport, controls,
   keyboard handlers, and reload action.
 - The **world module** owns the editable `build_scene()` function, scene
-  objects, materials, generated textures, and other resources that must change
-  with a world reload.
-- A successful reload atomically replaces `viewport.scene`; a failed reload
-  leaves the current scene running.
+  objects, materials, generated textures, collision/terrain/traversal builders,
+  feature switches, and other resources that must change with a world reload.
+- A successful reload replaces the complete world bundle at once; a failed
+  reload leaves the active module, scene, resources, collisions, terrain, and
+  flags untouched.
 
 ## Ownership Rule
 
@@ -34,13 +35,17 @@ This includes:
 - `SolidMaterial`, `ImageMaterial`, and other scene materials
 - generated textures, bitmap pixel creation, and texture-size constants
 - world-local helper functions and world-specific visual effects
+- `build_collision_world()`, `build_terrain_surface()`, and
+  `build_traversal_settings()`, so gameplay support always matches geometry
+- `*_ENABLED` feature switches and `effective_world_flags()`
 
 Keep only persistent application infrastructure in the host module:
 
 - `dcg.Context` and window/layout construction
 - `DrawInWindow3D` and its callback wiring
 - camera controls, input handlers, and status UI
-- reload error reporting and candidate-scene swap logic
+- reload error reporting, candidate loading, and bundle swap logic
+- the world lock, scene generation counter, and telemetry wiring
 
 Do not put a world-editable texture generator or material builder in the host.
 Otherwise saving the world file and pressing Reload will rebuild the scene with
@@ -76,10 +81,15 @@ while context.running:
 
 ```python
 def render_if_needed(self) -> None:
-  stats = self.viewport.render_if_needed()
-  if stats is not None:
-    self._update_status()
+  with self._world_lock:
+    stats = self.viewport.render_if_needed()
+    if stats is not None:
+      self._update_status()
 ```
+
+Guard rendering, movement, resize, and reload with the same `RLock` so a
+rebuild never observes a half-swapped world (for example, a new scene with old
+collisions or terrain).
 
 This coalesces rapid camera updates into one retained-frame rebuild and keeps
 the UI responsive. Use `render_now()` only for an explicit synchronous action
@@ -89,33 +99,95 @@ whose caller genuinely needs the newly rendered result immediately. Reference:
 
 ## Reload Pattern
 
-1. The host imports the world module.
-2. The host creates the initial world-local resources by calling world-module
-   functions with the persistent `dcg.Context`.
-3. The host builds the scene from those resources.
-4. On Reload, invalidate import caches and reload the world module.
-5. Build all candidate world-local resources and the candidate scene before
-   assigning anything to the viewport.
-6. If construction succeeds, replace `viewport.scene` and update references to
-   the new controlled objects. If it fails, retain the old scene and show the
-   error.
+1. The host imports the world module and builds the initial world bundle with
+   the same `build_world()` used for reloads.
+2. On Reload, execute the edited source into a **fresh, isolated candidate
+   module**. Do not use `importlib.reload()`: it re-executes code in the active
+   module's namespace, so a failed or partial reload corrupts the running
+   world's globals, flags, and builders.
+3. Build the complete candidate bundle — resources, scene, avatar, collisions,
+   terrain, traversal settings, effective flags — plus any derived host objects
+   (follow controller, clamped camera) before touching active state.
+4. If anything raises, report the error and return; active state is unchanged.
+5. On success, assign every bundle field, increment the scene generation, and
+   reset telemetry for the new configuration.
+
+Load the candidate from source bytes so rapid same-size edits cannot reuse
+stale bytecode:
 
 ```python
-try:
-    importlib.invalidate_caches()
-    candidate_module = importlib.reload(self.world_module)
-    candidate_texture = candidate_module.create_road_texture(self.context)
-    candidate_scene, candidate_avatar = candidate_module.build_scene(candidate_texture)
-except Exception as error:
-    self.reload_status.value = f"Reload failed: {type(error).__name__}: {error}"
-    traceback.print_exc()
-    return
-
-self.world_module = candidate_module
-self.viewport.scene = candidate_scene
-self.avatar = candidate_avatar
-self.road_texture = candidate_texture
+def load_world_candidate(module: ModuleType) -> ModuleType:
+    path = Path(module.__file__)
+    spec = importlib.util.spec_from_file_location(module.__name__, path)
+    candidate = importlib.util.module_from_spec(spec)
+    exec(compile(path.read_bytes(), str(path), "exec"), candidate.__dict__)
+    return candidate
 ```
+
+Group everything that must change together into one immutable bundle:
+
+```python
+@dataclass(frozen=True)
+class TownWorld:
+    module: ModuleType
+    road_texture: dcg.Texture | None
+    scene: Scene3D
+    avatar: Box3D
+    collisions: CollisionWorld
+    terrain: TerrainSurface | None
+    traversal: TraversalSettings
+    flags: dict[str, bool]
+
+
+def build_world(context: dcg.Context, module: ModuleType) -> TownWorld:
+    texture = module.create_road_texture(context)
+    scene, avatar = module.build_scene(texture)
+    return TownWorld(module, texture, scene, avatar,
+                     module.build_collision_world(), module.build_terrain_surface(),
+                     module.build_traversal_settings(), module.effective_world_flags())
+```
+
+Swap the whole bundle under the world lock:
+
+```python
+def reload_world(self, *_: object) -> None:
+    with self._world_lock:
+        try:
+            candidate = build_world(self.context, load_world_candidate(self.world_module))
+            follow = EdgeBandFollowController(..., terrain=candidate.terrain)
+        except Exception as error:
+            self.reload_status.value = f"Reload failed: {type(error).__name__}: {error}"
+            traceback.print_exc()
+            return
+
+        self.world_module = candidate.module
+        self.viewport.scene = candidate.scene
+        self.viewport.terrain = candidate.terrain
+        self.avatar = candidate.avatar
+        self.road_texture = candidate.road_texture
+        self.collisions = candidate.collisions
+        self.terrain = candidate.terrain
+        self.traversal_settings = candidate.traversal
+        self.effective_flags = dict(candidate.flags)
+        self.follow = follow
+        self.scene_generation += 1
+        if self.viewport.telemetry is not None:
+            self.viewport.telemetry.set_scene(self.scene_generation, self.effective_flags)
+```
+
+## Feature Switches and Effective Flags
+
+Expose comparison groups as module-level `*_ENABLED` booleans in the world
+module and apply them only through Reload — never by mutating the active
+module per frame. Dependent switches must report their effective value, so
+`effective_world_flags()` derives combined flags (for example, road texturing
+requires roads, terrain following requires the hill). Keep geometry,
+collisions, and terrain support consistent: a disabled feature must not leave
+invisible colliders or terrain behind.
+
+The host snapshots effective flags with each successful reload and passes them,
+with the new scene generation, to `RenderTelemetry.set_scene()`. This resets
+the rolling profiling window so different workloads are never mixed.
 
 ## Resource Lifetime
 
@@ -128,22 +200,28 @@ For world-owned generated resources, prefer this shape:
 
 ```python
 # world module
-def create_road_texture(context: dcg.Context) -> dcg.Texture:
+def create_road_texture(context: dcg.Context) -> dcg.Texture | None:
+    if not (ROAD_ENABLED and ROAD_TEXTURE_ENABLED):
+        return None
     ...
 
-def build_scene(road_texture: dcg.Texture) -> tuple[Scene3D, Box3D]:
+def build_scene(road_texture: dcg.Texture | None = None) -> tuple[Scene3D, Box3D]:
     ...
-
-# host module, during initial build and reload
-road_texture = world.create_road_texture(context)
-scene, avatar = world.build_scene(road_texture)
 ```
+
+Resource builders may return `None` when their feature is disabled;
+`build_scene()` must fall back to solid materials in that case.
+
+Resources stored in a world-module global (for example, the windmill billboard
+textures in `_WINDMILL_TEXTURES`) stay alive because the bundle retains its
+candidate module. The previous module and its textures are released only
+after the new bundle has been published.
 
 ## Rebuild, Do Not Mutate Old Instances
 
-After `importlib.reload()`, rebuild all scene objects from the reloaded module
-and replace the retained scene. Do not mix new classes or materials from the
-reloaded module with old scene objects from the previous module instance.
+Rebuild all scene objects from the candidate module and replace the retained
+scene. Do not mix new classes or materials from the candidate module with old
+scene objects, collisions, or terrain from the previous module instance.
 
 ## Validation
 
@@ -153,12 +231,22 @@ After a change, check both the syntax and the actual reload contract:
 & .\.venv\Scripts\python.exe -m py_compile .\Animation\ported_demos\town_hot_reload.py .\Animation\ported_demos\town_hot_reload_world.py
 ```
 
-Then instantiate a `dcg.Context`, create the resource from the world module,
-build the world, reload the module, recreate the resource, and rebuild again.
-Verify the expected scene objects use the new material/resource types.
+Then run the reload, feature-switch, and failure-preservation tests:
+
+```powershell
+& .\.venv\Scripts\python.exe -m pytest tests\test_draw_in_window_3d_profiling.py -q
+```
+
+When adding a reload behavior, verify that a successful reload replaces every
+bundle field and increments the generation, and that a failing candidate leaves
+the active module, scene, resources, collisions, terrain, flags, and generation
+unchanged.
 
 ## Reference
 
 - Host: `Animation/ported_demos/town_hot_reload.py`
 - Reloadable world: `Animation/ported_demos/town_hot_reload_world.py`
+- Profiling host variant: `Animation/ported_demos/town_hot_reload_profiling.py`
+- Textured box-face example: `Animation/ported_demos/collision_two_boxes.py`
+- Tests: `tests/test_draw_in_window_3d_profiling.py`
 - Textured box-face example: `Animation/ported_demos/collision_two_boxes.py`
