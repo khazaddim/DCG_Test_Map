@@ -5,7 +5,7 @@ from itertools import combinations, product
 import dearcygui as dcg
 import pytest
 
-from Animation.draw_in_window_3d_framework import Box3D, Camera3D, CpuRenderer3D, GroundPlane3D, ImageMaterial, OverlapDepthSorter
+from Animation.draw_in_window_3d_framework import Billboard3D, Box3D, Camera3D, CpuRenderer3D, GroundPlane3D, ImageMaterial, OverlapDepthSorter
 from Animation.draw_in_window_3d_framework.math3d import Viewport
 from Animation.draw_in_window_3d_framework.scene import FrameContext
 from Animation.ported_demos import open_room_hot_reload_world as room
@@ -71,11 +71,110 @@ def test_rug_texture_is_retained_reloaded_and_emitted_on_the_flush_box_top() -> 
     try:
         stats = CpuRenderer3D().render(context, drawing, prepared.scene, frame.camera, frame.viewport)
         assert not stats.cycle_detected
-        assert sum(type(child).__name__ == "DrawImage" for child in drawing.children) == top.tessellation ** 2
+        image_materials = [
+            material
+            for obj in prepared.scene.iter_visible()
+            for material in (
+                [m for m in obj.face_materials if isinstance(m, ImageMaterial)]
+                if isinstance(obj, Box3D) and obj.face_materials
+                else [obj.material] if isinstance(obj, Billboard3D) and isinstance(obj.material, ImageMaterial)
+                else []
+            )
+        ]
+        assert sum(type(child).__name__ == "DrawImage" for child in drawing.children) == sum(
+            material.tessellation ** 2 for material in image_materials
+        )
         candidate = host.build_world(context, host.load_world_candidate(room))
         assert candidate.road_texture is not prepared.road_texture
     finally:
         drawing.delete_item()
+
+
+def test_bookcases_are_filled_with_books_on_every_shelf() -> None:
+    scene, _ = room.build_scene()
+    boxes = [obj for obj in scene.iter_visible() if isinstance(obj, Box3D)]
+    expected_rows = len(room.BOOK_ROW_Z)
+    expected_slots = len(room.BOOK_ROW_X_OFFSETS)
+    all_colors = set()
+    for _name, (cx, cy), color_offset in room.BOOKCASE_SPECS:
+        book_y = cy - 1.5
+        books = [
+            box for box in boxes
+            if box.center[1] == book_y and box.center[2] in room.BOOK_ROW_Z
+            and abs(box.center[0] - cx) <= room.BOOKCASE_WIDTH * 0.5
+        ]
+        assert len(books) == expected_rows * expected_slots
+        assert {box.center[2] for box in books} == set(room.BOOK_ROW_Z)
+        all_colors.update(box.material.fill for box in books)
+    # Different bookcases use a different color offset, so palettes are not identical.
+    assert len(all_colors) > len(room.BOOK_ROW_X_OFFSETS)
+
+
+def test_craft_table_mat_is_textured_and_falls_back_to_solid_without_a_texture() -> None:
+    context = dcg.Context()
+    prepared = host.build_world(context, room)
+    mat = next(
+        obj for obj in prepared.scene.iter_visible()
+        if isinstance(obj, Box3D) and obj.center[:2] == room.CRAFT_TABLE_CENTER
+        and obj.face_materials and obj.face_materials[1] is not None
+    )
+    top = mat.face_materials[1]
+    assert isinstance(top, ImageMaterial)
+    assert top.texture is room._CRAFT_MAT_TEXTURE is not None
+    assert all(material is None for index, material in enumerate(mat.face_materials) if index != 1)
+    frame = FrameContext(
+        camera=Camera3D(target=prepared.avatar.center, yaw_deg=10, pitch_deg=52, zoom=3.5),
+        viewport=Viewport(900, 600),
+    )
+    drawing = dcg.DrawingList(context)
+    try:
+        stats = CpuRenderer3D().render(context, drawing, prepared.scene, frame.camera, frame.viewport)
+        assert not stats.cycle_detected
+    finally:
+        drawing.delete_item()
+
+    candidate = host.load_world_candidate(room)
+    assert candidate.create_craft_mat_texture(dcg.Context()) is not None
+
+    fallback_candidate = host.load_world_candidate(room)
+    scene, _ = fallback_candidate.build_scene()
+    fallback_mat = next(
+        obj for obj in scene.iter_visible()
+        if isinstance(obj, Box3D) and obj.center[:2] == room.CRAFT_TABLE_CENTER
+        and obj.face_materials and obj.face_materials[1] is not None
+    )
+    assert fallback_mat.face_materials[1] is fallback_candidate.CRAFT_MAT_MATERIAL
+    fallback_candidate.FURNITURE_ENABLED = False
+    assert fallback_candidate.create_craft_mat_texture(dcg.Context()) is None
+
+
+def test_crystal_ball_billboard_is_textured_and_omitted_without_a_texture() -> None:
+    context = dcg.Context()
+    prepared = host.build_world(context, room)
+    billboard = next(obj for obj in prepared.scene.iter_visible() if isinstance(obj, Billboard3D))
+    assert billboard.anchor[:2] == room.CRYSTAL_TABLE_CENTER
+    assert isinstance(billboard.material, ImageMaterial)
+    assert billboard.material.texture is room._CRYSTAL_BALL_TEXTURE is not None
+    frame = FrameContext(
+        camera=Camera3D(target=prepared.avatar.center, yaw_deg=-30, pitch_deg=52, zoom=3.5),
+        viewport=Viewport(900, 600),
+    )
+    drawing = dcg.DrawingList(context)
+    try:
+        stats = CpuRenderer3D().render(context, drawing, prepared.scene, frame.camera, frame.viewport)
+        assert not stats.cycle_detected
+    finally:
+        drawing.delete_item()
+
+    candidate = host.load_world_candidate(room)
+    scene, _ = candidate.build_scene()
+    assert not any(isinstance(obj, Billboard3D) for obj in scene.iter_visible())
+    assert any(
+        isinstance(obj, Box3D) and obj.center[:2] == room.CRYSTAL_TABLE_CENTER
+        for obj in scene.iter_visible()
+    )
+    candidate.FURNITURE_ENABLED = False
+    assert candidate.create_crystal_ball_texture(dcg.Context()) is None
 
 
 @pytest.mark.parametrize("pitch", [0.0, 30.0, 47.1, 52.0, 65.0, 78.0])

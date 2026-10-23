@@ -347,7 +347,8 @@ def test_selected_open_room_world_has_a_complete_reload_bundle() -> None:
     assert prepared.scene.object_count > 1
     assert prepared.avatar in tuple(prepared.scene.iter_visible())
     assert {str(collider.owner) for collider in prepared.collisions.colliders} == {
-        "back wall", "left wall", "table", "chair", "bed", "bookcase",
+        "back wall", "left wall", "table", "chair", "bed",
+        "bookcase 1", "bookcase 2", "bookcase 3", "craft table", "crystal ball table",
     }
     assert prepared.terrain is None
     assert prepared.traversal.mode is TerrainMode.FLAT
