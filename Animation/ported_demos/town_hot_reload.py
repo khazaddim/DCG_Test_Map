@@ -29,7 +29,8 @@ from Animation.draw_in_window_3d_framework.profiling import RenderTelemetry
 
 
 # Change this one value to select the editable world loaded by this host.
-WORLD_MODULE_NAME = "Animation.ported_demos.open_room_hot_reload_world"
+WORLD_MODULE_NAME = "Animation.ported_demos.town_hot_reload_world"
+# WORLD_MODULE_NAME = "Animation.ported_demos.open_room_hot_reload_world"  # wizard room
 world = importlib.import_module(WORLD_MODULE_NAME)
 
 VIEW_W = 900
