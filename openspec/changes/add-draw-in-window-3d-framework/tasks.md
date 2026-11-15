@@ -213,6 +213,10 @@
 - [ ] 5.5.22 Identify bottleneck stages and functions from fixtures, interactive scene comparisons, and optional detailed captures; document workload-dependent findings without assuming occlusion sorting is the dominant cost
 - [ ] 5.5.23 Prepare a profiling-evidence handoff for Milestone 6, including measured bottlenecks, raw exports/capture context, feature configurations, workload counters, unprofiled baseline timings, instrumentation overhead, and remaining measurement gaps
 
+
+  - [ ] User input: create/prepare representative profiling worlds for the town, room, motor, and one additional example (preferably an irregular triangle-mesh cave), then run the profiling GUI on each; include a matched textured-surface on/off comparison (e.g. town road or wizard-room rug), and save `.prof` and `.prof.json` captures under `profiling-output/`, separate from unprofiled baselines.
+
+
 ## Milestone 6: Evidence-Based Compiled Core Design
 
 Depends on the Milestone 5.5 profiling-evidence handoff. This milestone produces an architecture decision and a bounded prototype plan, not a mandatory compiled renderer implementation.
