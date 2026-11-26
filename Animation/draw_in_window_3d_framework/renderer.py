@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from dataclasses import replace
+from math import isfinite
 from typing import Iterable
 
 import dearcygui as dcg
@@ -395,6 +396,15 @@ class CpuRenderer3D:
                     else packet,
                     frame,
                 )
+            horizontal_plane = None
+            if (
+                isinstance(self.sorter, OverlapDepthSorter)
+                and self.sorter.use_coplanar_edge_filter
+                and packet.points
+                and isfinite(packet.points[0][2])
+                and all(point[2] == packet.points[0][2] for point in packet.points)
+            ):
+                horizontal_plane = packet.points[0][2]
             return ProjectedRenderEntry(
                 kind="polygon",
                 stable_index=stable_index,
@@ -413,6 +423,7 @@ class CpuRenderer3D:
                 cache_key=packet.cache_key,
                 billboard=packet.billboard,
                 source_id=packet.source_id,
+                horizontal_plane=horizontal_plane,
             )
 
         if packet.kind == "line":

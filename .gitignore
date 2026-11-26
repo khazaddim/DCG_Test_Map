@@ -151,6 +151,7 @@ activemq-data/
 .env
 .envrc
 .venv
+.venv-taichi/
 env/
 venv/
 ENV/

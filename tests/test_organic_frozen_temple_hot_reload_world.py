@@ -296,6 +296,31 @@ def test_glowing_doorway_and_ridge_visible_at_reference_camera(pitch, yaw, zoom)
         assert any(visible), "The warm interior must be visible through the doorway, not painted over"
 
 
+@pytest.mark.parametrize("yaw,zoom", [(0, 1.0), (90, 1.0), (0, 0.25)])
+def test_coplanar_edge_filter_matches_temple_baseline(yaw, zoom) -> None:
+    scene, avatar = temple.build_scene()
+    frame = FrameContext(Camera3D(avatar.center, yaw, 52, zoom), Viewport(900, 600))
+    experimental = OverlapDepthSorter(use_coplanar_edge_filter=True)
+    renderer = CpuRenderer3D(experimental)
+    entries, _ = renderer.project_packets(renderer.collect_packets(scene, frame), frame)
+
+    baseline_sorter = OverlapDepthSorter()
+    baseline = baseline_sorter.sort(entries, frame)
+    actual = experimental.sort(entries, frame)
+
+    assert baseline.sort_stats is not None and actual.sort_stats is not None
+    assert actual.sort_stats.skipped_pair_count > 0
+    assert actual.sort_stats.exact_test_count + actual.sort_stats.skipped_pair_count == baseline.sort_stats.exact_test_count
+    assert actual.sort_stats.accepted_edge_count == baseline.sort_stats.accepted_edge_count
+    baseline_pairs, _, _ = baseline_sorter.generate_candidates(entries)
+    experimental_pairs, _, _ = experimental.generate_candidates(entries)
+    assert baseline_sorter.test_overlaps(entries, baseline_pairs, frame) == experimental.test_overlaps(
+        entries, experimental_pairs, frame,
+    )
+    assert [entry.stable_index for entry in actual.entries] == [entry.stable_index for entry in baseline.entries]
+    assert actual.cycle_detected == baseline.cycle_detected
+
+
 def test_sanctum_floor_cutout_is_flush_and_has_no_missing_or_double_tiles() -> None:
     sections = temple.cave_sections()
     expected = 0.0
