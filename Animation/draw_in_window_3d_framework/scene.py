@@ -233,7 +233,6 @@ class ProjectedRenderEntry:
     visible: bool = True
     billboard: bool = False
     source_id: int | None = None
-    horizontal_plane: float | None = None
 
 
 @dataclass(frozen=True)
@@ -309,7 +308,6 @@ class SortStats:
     cycle_detected: bool
     sort_duration_seconds: float
     candidate_strategy: str
-    skipped_pair_count: int = 0
 
 
 @dataclass(frozen=True)
@@ -342,13 +340,10 @@ def _signed_polygon_area(points: Sequence[Vec2]) -> float:
     )
 
 
-_SCREEN_OVERLAP_EPSILON = 1e-7
-
-
 def convex_screen_polygons_overlap(
     first: Sequence[Vec2],
     second: Sequence[Vec2],
-    epsilon: float = _SCREEN_OVERLAP_EPSILON,
+    epsilon: float = 1e-7,
 ) -> bool:
     if len(first) < 3 or len(second) < 3:
         return False
@@ -584,45 +579,6 @@ def _sweep_candidate_pairs(
     )
 
 
-def _filter_coplanar_edge_pairs(
-    entries: Sequence[ProjectedRenderEntry],
-    candidate_pairs: tuple[tuple[int, int], ...],
-) -> tuple[tuple[int, int], ...]:
-    edge_maps: dict[int, dict[tuple[Vec2, Vec2], tuple[Vec2, Vec2]]] = {}
-    for index in {index for pair in candidate_pairs for index in pair}:
-        entry = entries[index]
-        if entry.horizontal_plane is None:
-            continue
-        edges: dict[tuple[Vec2, Vec2], tuple[Vec2, Vec2]] = {}
-        for offset, start in enumerate(entry.points):
-            end = entry.points[(offset + 1) % len(entry.points)]
-            if start != end:
-                edges[min(start, end), max(start, end)] = (start, end)
-        edge_maps[index] = edges
-
-    kept = []
-    for first_index, second_index in candidate_pairs:
-        first = entries[first_index]
-        second = entries[second_index]
-        first_edges = edge_maps.get(first_index)
-        second_edges = edge_maps.get(second_index)
-        if first_edges is not None and second_edges is not None and first.horizontal_plane == second.horizontal_plane:
-            for key, (start, end) in first_edges.items():
-                if key not in second_edges:
-                    continue
-                # This is the same separating axis and tolerance used by the exact test.
-                axis = (start[1] - end[1], end[0] - start[0])
-                first_min, first_max = _project_polygon_axis(first.points, axis)
-                second_min, second_max = _project_polygon_axis(second.points, axis)
-                if first_max < second_min + _SCREEN_OVERLAP_EPSILON or second_max < first_min + _SCREEN_OVERLAP_EPSILON:
-                    break
-            else:
-                kept.append((first_index, second_index))
-        else:
-            kept.append((first_index, second_index))
-    return tuple(kept)
-
-
 def _sort_stats(
     entries: Sequence[ProjectedRenderEntry],
     *,
@@ -646,7 +602,6 @@ def _sort_stats(
         cycle_detected=cycle_detected,
         sort_duration_seconds=sort_duration_seconds,
         candidate_strategy=candidate_strategy,
-        skipped_pair_count=candidate_metrics.bounds_candidate_pair_count - exact_test_count,
     )
 
 
@@ -668,12 +623,10 @@ class OverlapDepthSorter:
         overlap_area_epsilon: float = 0.25,
         depth_epsilon: float = 1e-5,
         use_sweep_and_prune: bool = True,
-        use_coplanar_edge_filter: bool = False,
     ) -> None:
         self.overlap_area_epsilon = overlap_area_epsilon
         self.depth_epsilon = depth_epsilon
         self.use_sweep_and_prune = use_sweep_and_prune
-        self.use_coplanar_edge_filter = use_coplanar_edge_filter
         self.last_sort_stats: SortStats | None = None
 
     def sort(
@@ -713,14 +666,11 @@ class OverlapDepthSorter:
     def generate_candidates(
         self, entries: Sequence[ProjectedRenderEntry],
     ) -> tuple[tuple[tuple[int, int], ...], _CandidatePairMetrics, dict[int, _ProjectedBounds]]:
-        pairs, metrics, bounds = (
+        return (
             _sweep_candidate_pairs(entries)
             if self.use_sweep_and_prune
             else _all_pairs_candidate_pairs(entries)
         )
-        if self.use_coplanar_edge_filter:
-            pairs = _filter_coplanar_edge_pairs(entries, pairs)
-        return pairs, metrics, bounds
 
     def test_overlaps(
         self,

@@ -327,31 +327,6 @@ arrow-key movement, terrain following, reset, and the startup
 The shared camera zoom range is 0.25x to 16x (default 3.5x), including the cave
 launcher.
 
-### Experimental coplanar edge filter
-
-The shared host has an opt-in `USE_COPLANAR_EDGE_FILTER` startup switch, default
-`False`. Set it to `True` in [the host](Animation/ported_demos/town_hot_reload.py)
-before launching a profiling world to try automatic filtering of horizontal
-coplanar polygons that share a projected edge and pass the existing separation
-test. Both polygons remain visible; overlapping or uncertain pairs use the
-normal exact test. The profiling panel reports candidates, exact tests, and
-skipped pairs separately. Fewer exact tests do not necessarily mean a faster
-rebuild.
-
-The headless [comparison runner](Animation/ported_demos/benchmark_coplanar_filter.py)
-checks baseline and experimental ordering at four organic temple views and a
-500-face synthetic workload. It times collection, projection, and instrumented
-sorting, not node creation, publication, or interactive FPS. For example:
-
-```powershell
-.\.venv\Scripts\python.exe Animation\ported_demos\benchmark_coplanar_filter.py --samples 5 --warmups 1 --output profiling-output\coplanar-comparison.json
-```
-
-The runner refuses to overwrite an existing report. It runs the baseline then
-the experiment sequentially for each view, so external load or drift can distort
-comparisons. Five samples give a nearest-rank P95 equal to the maximum; repeat
-on an otherwise idle machine before drawing performance conclusions.
-
 ### Comparing world features
 
 Edit world constants, save, and press **Reload world**. Existing feature flags

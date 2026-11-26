@@ -43,7 +43,6 @@ ZOOM_MAX = 16.0
 ZOOM_DEFAULT = 3.5
 CONTROLS_HEIGHT = 250.0
 USE_SWEEP_AND_PRUNE = True
-USE_COPLANAR_EDGE_FILTER = False
 
 
 @dataclass(frozen=True)
@@ -320,7 +319,6 @@ def build_ui(
     renderer = CpuRenderer3D(
         sorter=OverlapDepthSorter(
             use_sweep_and_prune=USE_SWEEP_AND_PRUNE if use_sweep_and_prune is None else use_sweep_and_prune,
-            use_coplanar_edge_filter=USE_COPLANAR_EDGE_FILTER,
         )
     )
 

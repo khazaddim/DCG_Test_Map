@@ -149,8 +149,7 @@ class ProfilingPanel:
                 f"Strategy: {sample['strategy']} | packets {counts['packet_count']} | "
                 f"projected {counts['projected_count']} | emitted {counts['emitted_count']}\n"
                 f"candidates {sort.get('bounds_candidate_pair_count', 0)} | "
-                f"exact {sort.get('exact_test_count', 0)} | skipped {sort.get('skipped_pair_count', 0)} | "
-                f"edges {sort.get('accepted_edge_count', 0)} | "
+                f"exact {sort.get('exact_test_count', 0)} | edges {sort.get('accepted_edge_count', 0)} | "
                 f"cycle {counts['cycle_detected']}"
             )
             total = summaries["total_rebuild"]
