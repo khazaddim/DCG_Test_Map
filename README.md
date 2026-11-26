@@ -168,6 +168,55 @@ The natural complex cave retains its existing appearance and behavior. It and
 Trippy Cave share [stateless cave geometry helpers](Animation/ported_demos/cave_geometry.py),
 but each reloadable world owns its outline, materials, props, and feature flags.
 
+### Volcano Cave
+
+Run the [Volcano Cave launcher](Animation/ported_demos/volcano_cave_hot_reload_profiling.py):
+
+```powershell
+.\.venv\Scripts\python.exe Animation\ported_demos\volcano_cave_hot_reload_profiling.py
+```
+
+[The volcano world](Animation/ported_demos/volcano_cave_hot_reload_world.py)
+places a rugged basalt island inside a lava moat, with two stone bridges
+to an outer rocky rim and a third bridge to a smaller secondary island.
+A radially tessellated, approximately 620-unit-high
+dome encloses the chamber. Its inward-facing mesh and the existing near-plane
+and viewport clipping give close interior views and zoomed-out cutaways.
+The main island rises from 60-unit shoreline cliffs to an approximately
+160-unit central summit, with additional ridges. The secondary island rises
+from a 55-unit edge to its own smaller summit. The player follows the actual
+terrain triangles rather than staying at lava height.
+
+Lava blocks movement, including partial player-footprint overlaps. Stone
+bridges have cambered decks, extruded stone side walls, hollow arches
+underneath, and solid end abutments, following the town arch's mesh-section
+pattern. Lava remains visible below the spans. All three bridges are
+traversable; collision uses the same dry
+floor triangles as the scene, checking clipped coverage rather than just the
+player center or corners. Basalt boulders have conservative mesh-derived
+collision boxes, and their contact edges conform to terrain triangle
+boundaries so ridges do not poke through their bases. The orange/yellow lava is static solid-color geometry, not
+fluid animation, bloom, or a damage simulation.
+
+`ISLAND_RADIUS`, `LAVA_OUTER_RADIUS`, `DOME_RADIUS`, `DOME_HEIGHT`, and bridge
+angles control layout. `ISLAND_EDGE_HEIGHT`, `ISLAND_PEAK_HEIGHT`,
+`ISLAND_RELIEF`, and the secondary-island settings control elevation;
+bridge camber and arch-rise settings control the structural spans.
+`SECTORS`, `ISLAND_RINGS`, `LAVA_BANDS`, and `DOME_RINGS` control workload.
+With the default secondary-island fractions, use a multiple of six lava bands
+to keep its bridge landing aligned with the island edge.
+`LAVA_ENABLED=False` replaces lava with a continuous traversable stone slope. Disabling
+`BRIDGES_ENABLED` removes the dry moat crossings; bridge lines depend on both
+lava and bridges. `SECONDARY_ISLAND_ENABLED` and `SECONDARY_BRIDGE_ENABLED`
+control the extra island and its connection. Dome, boulders, and mesh edges
+have separate flags. Save and press **Reload world** to replace geometry,
+collision, terrain support, and traversal settings together. Camera focus
+height updates on reload, and Reset view samples the center's current height.
+During movement the camera follows the player's elevation. Its dead-zone
+offsets use the player's height plane so lava gaps do not stall camera tracking.
+Exports/captures go to gitignored `profiling-output\volcano-cave\`.
+The earlier cave worlds remain unchanged.
+
 ## Interactive town CPU profiling
 
 Run the [profiling town](Animation/ported_demos/town_hot_reload_profiling.py):

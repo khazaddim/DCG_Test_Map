@@ -235,3 +235,23 @@ def test_edge_band_follow_controller_tracks_terrain_height() -> None:
 
     assert viewport.camera.target[2] > 0.0
     assert math.isclose(viewport.camera.target[0], focus_sample.position[0], abs_tol=30.0)
+
+
+def test_terrain_follow_dead_zone_can_lie_over_a_surface_gap() -> None:
+    terrain = make_ramp_surface()
+    focus = terrain.sample(5.0, 5.0)
+    assert focus is not None
+    _context, viewport = build_widget(
+        Scene3D(), Camera3D(target=(-10.0, -10.0, 5.0), yaw_deg=0.0, pitch_deg=52.0, zoom=3.5),
+        terrain=terrain,
+    )
+    assert viewport.screen_to_surface((160.0, 100.0), ground_z=None) is None
+    follow = EdgeBandFollowController(viewport, band_x=120.0, band_y=80.0, terrain=terrain)
+
+    follow.update(focus.position)
+
+    screen = viewport.world_to_screen(focus.position)
+    assert screen is not None
+    assert 120.0 <= screen[0] <= 160.0
+    assert 80.0 <= screen[1] <= 100.0
+    assert viewport.camera.target[2] == pytest.approx(focus.height)

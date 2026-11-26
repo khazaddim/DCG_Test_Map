@@ -174,6 +174,10 @@ class HotReloadTownController:
                 max(0.0, min(candidate.module.WORLD_H, target[1])),
                 target[2],
             ))
+            if candidate.terrain is not None:
+                support = candidate.terrain.sample(camera.target[0], camera.target[1])
+                if support is not None:
+                    camera = replace(camera, target=(camera.target[0], camera.target[1], support.height))
         except Exception as error:
             self.reload_status.value = f"Reload failed: {type(error).__name__}: {error}"
             traceback.print_exc()
@@ -235,10 +239,10 @@ class HotReloadTownController:
         )
 
     def _world_center(self) -> tuple[float, float, float]:
-        support = self.collisions.support_sample(self.avatar.center[0], self.avatar.center[1])
+        center = (self.world_module.WORLD_W * 0.5, self.world_module.WORLD_H * 0.5)
+        support = self.collisions.support_sample(*center)
         return (
-            self.world_module.WORLD_W * 0.5,
-            self.world_module.WORLD_H * 0.5,
+            *center,
             0.0 if support is None else support.height,
         )
 

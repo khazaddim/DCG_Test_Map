@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from .math3d import Camera3D, Vec3
 from .terrain import TerrainSurface
@@ -19,6 +19,9 @@ class EdgeBandFollowController:
 
     def update(self, focus_point: Vec3) -> Camera3D:
         focus_surface = focus_point if self.terrain is not None else (focus_point[0], focus_point[1], self.ground_z)
+        camera = self.viewport.camera
+        if self.terrain is not None and camera.target[2] != focus_surface[2]:
+            self.viewport.set_camera(replace(camera, target=(*camera.target[:2], focus_surface[2])))
         screen = self.viewport.world_to_screen(focus_surface)
         if screen is None:
             return self.viewport.camera
@@ -29,11 +32,12 @@ class EdgeBandFollowController:
         )
         if target_screen == screen:
             return self.viewport.camera
-        target_surface = self.viewport.screen_to_surface(
-            target_screen,
-            terrain=self.terrain,
-            ground_z=self.ground_z if self.terrain is None else None,
-        )
+        if self.terrain is not None:
+            # Dead-zone offsets belong to the focus-height plane, not terrain
+            # that may be sloped or absent over lava.
+            target_surface = self.viewport.screen_to_ground(target_screen, ground_z=focus_surface[2])
+        else:
+            target_surface = self.viewport.screen_to_surface(target_screen, ground_z=self.ground_z)
         if target_surface is None:
             return self.viewport.camera
         camera = self.viewport.camera
