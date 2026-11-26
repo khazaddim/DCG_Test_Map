@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 import math
 
 import dearcygui as dcg
@@ -49,11 +50,12 @@ TERRAIN_FOLLOWING_ENABLED = True
 BOULDER_ENABLED = True
 TOWER_ENABLED = True
 ARCH_ENABLED = False
-FLOATING_ISLAND_ENABLED = True
+FLOATING_ISLAND_ENABLED = False
 HOUSES_ENABLED = True
 ROAD_ENABLED = True
 FLAT_GRID_ENABLED = True
 HILL_GRID_ENABLED = True
+HILL_TRIANGLE_OUTLINES_ENABLED = False
 BORDER_ENABLED = True
 MESH_EDGES_ENABLED = True
 WINDMILL_ENABLED = True
@@ -72,6 +74,7 @@ LABEL_COLOR = (210, 218, 211)
 BORDER_COLOR = (178, 146, 88)
 HILL_GRID_MAJOR_COLOR = (176, 182, 178)
 HILL_GRID_MINOR_COLOR = (138, 148, 141)
+HILL_TRIANGLE_OUTLINE_COLOR = (160, 160, 160)
 HILL_MATERIAL = SolidMaterial(fill=(92, 132, 82), outline=None, thickness=-1.0, shaded=True)
 BOULDER_MATERIAL = SolidMaterial(fill=(116, 119, 116), outline=(58, 62, 60), thickness=-1.0, shaded=True)
 BOULDER_EDGES = MeshEdgeStyle(color=(72, 76, 74), thickness=-1.0)
@@ -138,7 +141,8 @@ def effective_world_flags() -> dict[str, bool]:
         if name.endswith("_ENABLED") and isinstance(value, bool)
     }
     flags["ROAD_TEXTURE_ENABLED"] = ROAD_ENABLED and ROAD_TEXTURE_ENABLED
-    flags["HILL_GRID_ENABLED"] = HILL_ENABLED and HILL_GRID_ENABLED
+    flags["HILL_GRID_ENABLED"] = HILL_ENABLED and HILL_GRID_ENABLED and not HILL_TRIANGLE_OUTLINES_ENABLED
+    flags["HILL_TRIANGLE_OUTLINES_ENABLED"] = HILL_ENABLED and HILL_TRIANGLE_OUTLINES_ENABLED
     flags["TERRAIN_FOLLOWING_ENABLED"] = HILL_ENABLED and TERRAIN_FOLLOWING_ENABLED
     flags["WINDMILL_ENABLED"] = TOWER_ENABLED and WINDMILL_ENABLED
     flags["MESH_EDGES_ENABLED"] = MESH_EDGES_ENABLED and (
@@ -603,8 +607,12 @@ def add_rolling_hill(
     height: float,
 ) -> None:
     vertices, triangles = generate_rolling_hill_geometry(corner, extent, height)
-    scene.add(TriangleMesh3D(vertices=vertices, triangles=triangles, material=HILL_MATERIAL, cull_back_faces=False))
-    if not HILL_GRID_ENABLED:
+    material = (
+        replace(HILL_MATERIAL, outline=HILL_TRIANGLE_OUTLINE_COLOR)
+        if HILL_TRIANGLE_OUTLINES_ENABLED else HILL_MATERIAL
+    )
+    scene.add(TriangleMesh3D(vertices=vertices, triangles=triangles, material=material, cull_back_faces=False))
+    if not HILL_GRID_ENABLED or HILL_TRIANGLE_OUTLINES_ENABLED:
         return
     x_divisions = int(extent[0] / GRID_STEP)
     y_divisions = int(extent[1] / GRID_STEP)

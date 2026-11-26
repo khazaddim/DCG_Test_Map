@@ -11,8 +11,8 @@ import dearcygui as dcg
 import pytest
 
 from Animation.draw_in_window_3d_framework import (
-    AverageDepthSorter, DrawInWindow3D, OverlapDepthSorter, RenderStats,
-    TerrainMode, TriangleMesh3D,
+    AverageDepthSorter, DrawInWindow3D, Line3D, OverlapDepthSorter, RenderStats,
+    Scene3D, TerrainMode, TriangleMesh3D,
 )
 from Animation.draw_in_window_3d_framework.profiling import (
     HISTORY_SIZE, RenderTelemetry, STAGES, summarize,
@@ -398,6 +398,47 @@ def test_independent_geometry_switches(flag, removed) -> None:
         assert sum(isinstance(o, TriangleMesh3D) for o in before.iter_visible()) == sum(
             isinstance(o, TriangleMesh3D) for o in after.iter_visible()
         )
+
+
+@pytest.mark.parametrize("old_grid_enabled", [False, True])
+def test_hill_triangle_outlines_replace_grid_without_changing_terrain(old_grid_enabled) -> None:
+    world = fresh_world()
+    original = Scene3D()
+    world.add_rolling_hill(original, world.HILL_CORNER, world.HILL_EXTENT, world.HILL_HEIGHT)
+    original_items = tuple(original.iter_visible())
+    original_mesh = next(item for item in original_items if isinstance(item, TriangleMesh3D))
+    assert sum(isinstance(item, Line3D) for item in original_items) == 136
+
+    world.HILL_GRID_ENABLED = old_grid_enabled
+    world.HILL_TRIANGLE_OUTLINES_ENABLED = True
+    outlined = Scene3D()
+    world.add_rolling_hill(outlined, world.HILL_CORNER, world.HILL_EXTENT, world.HILL_HEIGHT)
+    outlined_items = tuple(outlined.iter_visible())
+    outlined_mesh = next(item for item in outlined_items if isinstance(item, TriangleMesh3D))
+
+    assert not any(isinstance(item, Line3D) for item in outlined_items)
+    assert outlined_mesh.vertices == original_mesh.vertices
+    assert outlined_mesh.triangles == original_mesh.triangles
+    assert outlined_mesh.edges is None
+    assert outlined_mesh.material.outline == world.HILL_TRIANGLE_OUTLINE_COLOR
+    assert world.build_terrain_surface() is not None
+    context = dcg.Context()
+    widget = DrawInWindow3D(
+        context, width=500, height=320, scene=outlined,
+        camera=host.Camera3D(target=(135.0, 125.0, 5.0), yaw_deg=0, pitch_deg=45, zoom=1),
+    )
+    stats = widget.render_now()
+    node_types = [type(child).__name__ for child in widget.displayed_layer.children]
+    assert stats.packet_count == len(outlined_mesh.triangles)
+    assert node_types.count("DrawTriangle") == len(outlined_mesh.triangles)
+    assert node_types.count("DrawLine") == 3 * len(outlined_mesh.triangles)
+    widget.delete_item()
+    flags = world.effective_world_flags()
+    assert flags["HILL_TRIANGLE_OUTLINES_ENABLED"]
+    assert not flags["HILL_GRID_ENABLED"]
+
+    world.HILL_ENABLED = False
+    assert not world.effective_world_flags()["HILL_TRIANGLE_OUTLINES_ENABLED"]
 
 
 def test_mesh_edges_and_effective_dependencies() -> None:

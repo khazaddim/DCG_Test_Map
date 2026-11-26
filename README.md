@@ -107,6 +107,13 @@ are retained. New independently editable switches default to `True`:
 | `MESH_EDGES_ENABLED` | Explicit mesh-edge overlays, not meshes or material face outlines |
 | `WINDMILL_ENABLED` | Animated tower billboard and its textures, not the tower |
 
+For an alternative hill grid, set `HILL_TRIANGLE_OUTLINES_ENABLED = True` and
+reload. It replaces the hill's separate grid lines with thin grey outlines on
+every hill triangle, including diagonals. It defaults to `False`; when enabled
+it overrides `HILL_GRID_ENABLED`. The current renderer draws these outlines as
+separate lines attached to each face, without the world-line occlusion pass;
+this emulates the appearance but not the node count of integrated outlines.
+
 `HILL_ENABLED` controls geometry and support; `TERRAIN_FOLLOWING_ENABLED`
 controls traversal policy. Effective flags show dependent features as off when
 their parent is absent (for example, no tower means no windmill). The ground and
