@@ -110,6 +110,37 @@ The shared profiling controls described below are available here too, with
 exports/captures under gitignored `profiling-output\cave\`. Enable telemetry and
 move/rotate/zoom to record rebuilds; idle GUI frames are not benchmark samples.
 
+### Complex cave and side lake
+
+The [complex cave launcher](Animation/ported_demos/complex_cave_hot_reload_profiling.py)
+is a separate version; the first cave remains unchanged:
+
+```powershell
+.\.venv\Scripts\python.exe Animation\ported_demos\complex_cave_hot_reload_profiling.py
+```
+
+Edit [its world](Animation/ported_demos/complex_cave_hot_reload_world.py) and
+press **Reload world**. `OUTLINE_CONTROLS` defines a winding narrow entrance,
+wider asymmetric chambers, and a narrowing exit beside a lake/channel on one
+side. Cross-sections generate the irregular mesh walls/ceiling and matching
+flat dry floor. Opaque, shaded-by-depth-color water bands tile the lake bed
+beside the dry floor, without stacked coplanar surfaces.
+
+The player cannot cross the shoreline or cave perimeter. Collision checks the
+whole square player footprint (including boundary notches between its corners).
+Rock pillars use conservative square collision proxies. Water is decorative,
+not a swimming or flowing-water simulation; ripples are static world lines.
+The outline is a connected, x-monotone chamber chain, not arbitrary branching
+or a full cave-network generator.
+
+`SECTION_STEP`, `ARCH_SEGMENTS`, and `FLOOR_BANDS` control tessellation.
+`WATER_ENABLED=False` replaces the water with traversable flat floor and removes
+the shoreline restriction. `PILLARS_ENABLED` removes both pillars and their
+blockers. Wall/ceiling visibility, ripple lines, and mesh edges have separate
+flags; hiding walls does not remove the cave's floor boundary. All geometry and
+movement configuration update together on reload, with failure preservation.
+Profiling exports/captures go to gitignored `profiling-output\complex-cave\`.
+
 ## Interactive town CPU profiling
 
 Run the [profiling town](Animation/ported_demos/town_hot_reload_profiling.py):
