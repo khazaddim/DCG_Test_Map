@@ -407,7 +407,7 @@ class Text3D:
 
 @dataclass
 class Box3D:
-    """Axis-aligned rectangular prism for buildings, blockers, and simple volumes."""
+    """Axis-aligned prism; translucent face materials disable back-face culling."""
 
     center: Vec3
     size: tuple[float, float, float]
@@ -454,12 +454,13 @@ class Box3D:
     def collect(self, frame: FrameContext) -> Iterable[WorldRenderPacket]:
         vertices = self.vertices()
         for face_index, (indices, normal) in enumerate(self._face_definitions):
+            material = self.face_materials[face_index] if self.face_materials and self.face_materials[face_index] is not None else self.material
             yield WorldRenderPacket(
                 kind="polygon",
                 points=tuple(vertices[index] for index in indices),
-                material=self.face_materials[face_index] if self.face_materials and self.face_materials[face_index] is not None else self.material,
+                material=material,
                 normal=normal,
-                cull_back_face=True,
+                cull_back_face=not _material_is_translucent(material),
             )
 
 

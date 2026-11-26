@@ -840,6 +840,34 @@ def test_non_occluding_surface_skips_rotated_line_depth_tests() -> None:
     assert len(decorative_segments) == 1
 
 
+@pytest.mark.parametrize("alpha", [80, 255])
+def test_non_occluding_translucent_surface_is_emitted_in_depth_order(monkeypatch, alpha) -> None:
+    scene = Scene3D()
+    floor = SolidMaterial(fill=(80, 100, 120), outline=None, shaded=False)
+    tint = SolidMaterial(fill=(255, 180, 80, alpha), outline=None, shaded=False, line_occluder=False)
+    for z, material in ((0, floor), (10, tint)):
+        scene.add(Polygon3D(
+            points=((-40, -40, z), (40, -40, z), (40, 40, z), (-40, 40, z)),
+            material=material, cull_back_face=False,
+        ))
+    renderer = CpuRenderer3D()
+    emitted = []
+
+    def capture(context, target, scene, frame, prepared, *args):
+        emitted.extend(draw.entry for draw in prepared)
+        return len(emitted)
+
+    monkeypatch.setattr(renderer, "emit_entries", capture)
+    context = dcg.Context()
+    layer = dcg.DrawingList(context)
+    try:
+        renderer.render(context, layer, scene, Camera3D((0, 0, 0), 0, 0, 1), Viewport(800, 600))
+        assert emitted[-1].material == (tint if alpha < 255 else floor)
+        assert next(entry for entry in emitted if entry.material == tint).line_occluder is False
+    finally:
+        layer.delete_item()
+
+
 def test_demo_11_marks_road_and_water_surfaces_as_non_occluding_decoration() -> None:
     demo = load_demo_11()
     scene, _player = demo.build_scene()

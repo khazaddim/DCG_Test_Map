@@ -217,6 +217,100 @@ offsets use the player's height plane so lava gaps do not stall camera tracking.
 Exports/captures go to gitignored `profiling-output\volcano-cave\`.
 The earlier cave worlds remain unchanged.
 
+### Frozen Temple
+
+Run the [Frozen Temple launcher](Animation/ported_demos/frozen_temple_hot_reload_profiling.py):
+
+```powershell
+.\.venv\Scripts\python.exe Animation\ported_demos\frozen_temple_hot_reload_profiling.py
+```
+
+[Its editable world](Animation/ported_demos/frozen_temple_hot_reload_world.py)
+is an original icebound sanctuary: a long vaulted hall, blue frozen floor tiles,
+twelve frosted stone pillars, a central crystal shrine with three ice spires,
+six bronze braziers, fallen masonry, and hanging icicles. The inward-facing
+walls and roof support viewport/near-plane cutaways. The floor is flat and
+traversable; pillars, shrine, braziers, and rubble have mesh-derived conservative
+square blockers. Icicles hang above player height and do not block the floor.
+The hall ends are open. Ice is opaque solid-color geometry, not translucent
+refraction, and warm floor patches/flames are static colors, not dynamic lights
+or animation. Movement has no slipping mechanic.
+
+Edit placements, materials, `WALL_HEIGHT`, `ROOF_RISE`, or tessellation
+(`SECTION_STEP`, `ARCH_SEGMENTS`, `FLOOR_BANDS`) and press **Reload world**.
+Pillar, shrine, brazier, and rubble switches remove both geometry and blockers.
+Icicles depend on the ceiling switch; wall/ceiling visibility does not remove
+the floor perimeter. Floor cracks and optional mesh edges have separate flags.
+Warm tiles replace ordinary floor tiles without coplanar overlays and disappear
+when braziers are disabled. Invalid placements/headroom preserve the active
+world on reload. Profiling exports/captures go to gitignored
+`profiling-output\frozen-temple\`. Existing cave worlds and hosts are unchanged.
+
+### Organic Frozen Temple
+
+Run the [Organic Frozen Temple launcher](Animation/ported_demos/organic_frozen_temple_hot_reload_profiling.py):
+
+```powershell
+.\.venv\Scripts\python.exe Animation\ported_demos\organic_frozen_temple_hot_reload_profiling.py
+```
+
+[Its separate editable world](Animation/ported_demos/organic_frozen_temple_hot_reload_world.py)
+uses the complex cave's asymmetric chambers, narrow winding approaches, and
+irregular mesh shell, with the frozen temple's blue stone, frosted pillars,
+crystal shrine, bronze braziers, hanging icicles, and fallen masonry.
+The former side lake is opaque, solid, traversable ice; disabling
+`FROZEN_LAKE_ENABLED` replaces it with ordinary frozen floor. There is no water
+hazard, slipping mechanic, dynamic lighting, or transparency.
+
+An ornate rectangular doorway is cut into a cave end wall at the narrow
+entrance, with frosted stone jambs, a lintel, and gold/bronze geometric trim.
+The approach outside the doorway is uncovered. The opening is a real hole in
+the wall, not a dark painted panel: the player can walk through it, while the
+wall and jambs block the full player footprint. `DOOR_X`, `DOOR_WIDTH`, and
+`DOOR_HEIGHT` control it. The door position inserts an exact shell station
+when needed; the frame must fit beneath the cave arch. There are no door leaves
+or opening animation. `DOORWAY_ENABLED=False` removes the entrance wall,
+ornament, and their blockers.
+
+The main chamber also has a larger ornate doorway opposite the frozen lake.
+It opens into a recessed sanctum with a frosted lintel, bronze/gold trim,
+and a bright warm interior with a graded pool of light-colored floor squares.
+The lower back wall is one unshaded `Polygon3D` quad, without the old vertical
+glow strips. Flat chamber tiles also render as single polygons, rather than
+independent mesh triangles, removing their internal diagonal seams.
+`GLOW_MATERIAL` controls the bright wall, and `GLOW_FLOOR_MATERIALS` controls
+the warm floor palette. These are opaque authored colors, not a translucent
+box, dynamic lighting, scattering, or bloom.
+The wall mesh is actually cut away, the player can enter the recess,
+and its jambs, sides, and back wall block movement. `SANCTUM_X`,
+`SANCTUM_WIDTH`, `SANCTUM_HEIGHT`, `SANCTUM_FRONT_Y`, and `SANCTUM_BACK_Y`
+control placement; the recess must remain inside the original floor perimeter.
+`SANCTUM_ENABLED` restores the original chamber wall/floor when disabled;
+`SANCTUM_GLOW_ENABLED` removes only the warm appearance.
+The framework supports real RGBA surface blending (alpha 0 to 255), verified
+with DearCyGui framebuffer capture, but transparency does not emit light onto
+other objects. Translucent box faces are double-sided and retain depth order
+when non-line-occluding; opaque decorative underlays retain their existing
+behavior. A running host must be restarted to load framework changes, whereas
+this world's color/geometry edits still use **Reload world**.
+
+`ICE_RIDGE_ENABLED` sculpts a projecting ice ledge into the upper chamber walls
+over `RIDGE_X_RANGE`, rather than stacking intersecting decorative geometry.
+More icicles hang from its underside with player clearance. `RIDGE_WIDTH`
+controls the projection (between 12 and 40 units). The ridge depends on walls,
+and its icicles also depend on the ceiling/ice switches. The sanctum cuts away
+the original wall and ledge in its footprint so neither crosses the doorway.
+
+Edit the world and press **Reload world**. Feature switches replace geometry
+and collision together; icicles depend on the ceiling. Floor perimeter checks
+remain active when walls are hidden. Mesh props use conservative square
+blockers and must fit below the actual generated roof. Profiling output goes
+to gitignored `profiling-output\organic-frozen-temple\`.
+The linear frozen temple and natural complex cave retain their existing
+appearance and movement. Both frozen temples reuse the stateless faceted-prop
+builder in [the cave geometry helpers](Animation/ported_demos/cave_geometry.py);
+each world still owns its materials, placements, and reload flags.
+
 ## Interactive town CPU profiling
 
 Run the [profiling town](Animation/ported_demos/town_hot_reload_profiling.py):

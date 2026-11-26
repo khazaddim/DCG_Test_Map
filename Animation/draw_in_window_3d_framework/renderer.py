@@ -8,6 +8,7 @@ import dearcygui as dcg
 
 from .math3d import Camera3D, ProjectionPipeline, Vec2, Viewport, shade_directional
 from .profiling import StageMeasurements
+from .objects import _material_is_translucent
 from .scene import (
     AnimatedImageMaterial,
     AnimationProjection,
@@ -526,6 +527,7 @@ class CpuRenderer3D:
             entry.kind == "polygon"
             and not entry.billboard
             and not entry.line_occluder
+            and (entry.material is None or not _material_is_translucent(entry.material))
         )
 
     def _emit_entry(

@@ -6,7 +6,7 @@ import math
 from typing import NamedTuple
 
 from Animation.draw_in_window_3d_framework import (
-    AabbFootprint, Collider, CollisionShape2D, CollisionWorld, Scene3D,
+    AabbFootprint, Collider, CollisionShape2D, CollisionWorld, MeshEdgeStyle, Scene3D,
     SolidMaterial, TriangleMesh3D, TraversalRole, Vec3,
 )
 
@@ -90,6 +90,47 @@ def add_flat_patch(scene: Scene3D, points: tuple[Vec3, Vec3, Vec3, Vec3], materi
     )
     if triangles:
         scene.add(TriangleMesh3D(vertices=points, triangles=triangles, material=material, cull_back_faces=False))
+
+
+def faceted_prop_mesh(
+    x: float, y: float, levels: tuple[tuple[float, float], ...], material: SolidMaterial,
+    *, edges: MeshEdgeStyle | None = None,
+) -> TriangleMesh3D:
+    """Closed octagonal frustum or pointed shard, with outward winding."""
+    if len(levels) < 2 or any(b[0] <= a[0] for a, b in zip(levels, levels[1:])):
+        raise ValueError("Prop levels must have increasing heights")
+    if any(not math.isfinite(v) for level in levels for v in level) or any(r < 0 for _, r in levels):
+        raise ValueError("Prop levels must be finite with nonnegative radii")
+    if any(r == 0 for _, r in levels[1:-1]) or all(r == 0 for _, r in levels):
+        raise ValueError("Only prop endpoints may be tips")
+    vertices, rings, triangles = [], [], []
+    for z, radius in levels:
+        start = len(vertices)
+        if radius == 0:
+            vertices.append((x, y, z))
+            rings.append((start,))
+        else:
+            vertices.extend(
+                (x + radius * math.cos(math.tau * i / 8),
+                 y + radius * math.sin(math.tau * i / 8), z) for i in range(8)
+            )
+            rings.append(tuple(range(start, start + 8)))
+    for first, second in zip(rings, rings[1:]):
+        for i in range(8):
+            j = (i + 1) % 8
+            if len(first) == 1:
+                triangles.append((first[0], second[j], second[i]))
+            elif len(second) == 1:
+                triangles.append((first[i], first[j], second[0]))
+            else:
+                triangles.extend(((first[i], first[j], second[j]), (first[i], second[j], second[i])))
+    for ring, reverse in ((rings[0], True), (rings[-1], False)):
+        if len(ring) > 1:
+            for i in range(1, 7):
+                triangles.append((ring[0], ring[i + 1], ring[i]) if reverse else (ring[0], ring[i], ring[i + 1]))
+    return TriangleMesh3D(
+        vertices=tuple(vertices), triangles=tuple(triangles), material=material, edges=edges,
+    )
 
 
 class CaveCollisionWorld(CollisionWorld):

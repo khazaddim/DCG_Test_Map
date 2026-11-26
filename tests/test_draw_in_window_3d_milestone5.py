@@ -229,6 +229,20 @@ def test_translucent_mesh_material_emits_double_sided_triangles() -> None:
     assert all(packet.cull_back_face is False for packet in packets)
 
 
+def test_translucent_box_emits_each_face_once_without_backface_culling() -> None:
+    for fill in ((255, 180, 80, 100), (255, 180, 80)):
+        box = Box3D(center=(0, 0, 0), size=(20, 20, 20), material=SolidMaterial(fill=fill))
+        packets = tuple(box.collect(make_frame()))
+        assert len(packets) == 6
+        assert all(packet.cull_back_face is (len(fill) == 3) for packet in packets)
+        assert len({packet.points for packet in packets}) == 6
+        if len(fill) == 4:
+            frame = FrameContext(Camera3D((0, 0, 10), 0, 0, 64, near_plane=0.1), Viewport(800, 600))
+            assert 0 < frame.eye[2] < 20
+            entries, _ = CpuRenderer3D().project_packets(packets, frame)
+            assert entries, "A camera inside a translucent box must still see its faces"
+
+
 def test_tetrahedral_fixture_renders_only_exterior_faces_with_pickable_source_ids() -> None:
     scene = Scene3D()
     mesh = TetrahedralMesh3D(
