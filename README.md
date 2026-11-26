@@ -78,6 +78,38 @@ renderer with a per-pixel depth buffer.
 
 For the larger reference demo, inspect `Demos/main_demo/drawings.py`.
 
+## Interactive cave CPU profiling
+
+Run the [cave profiling example](Animation/ported_demos/cave_hot_reload_profiling.py):
+
+```powershell
+.\.venv\Scripts\python.exe Animation\ported_demos\cave_hot_reload_profiling.py
+```
+
+Edit [the cave world](Animation/ported_demos/cave_hot_reload_world.py), save,
+and press **Reload world**. This first style/benchmark fixture is one straight,
+open-ended passage, 1,800 units long and 440 units wide, with a flat floor and
+an irregular, approximately 320-unit-high mesh arch. The default camera fits
+inside it; near-plane and viewport clipping reveal nearby interior rock.
+The shell is one-sided and inward-facing, so an outside camera sees a cutaway,
+not a solid exterior. This is not a depth-buffer renderer or a closed cave volume.
+
+Arrow keys move the gold player along the flat floor; floor-edge collision
+boundaries keep its footprint inside the passage. There is no sloped terrain,
+branching, or mesh collision in this initial example. Wall/ceiling roughness
+starts above the floor edges, leaving the walkable floor rectangular.
+
+`LENGTH_SEGMENTS` and `ARCH_SEGMENTS` control workload (defaults: 60 and 12,
+1,440 shell triangles plus 60 floor patches and the avatar).
+`ROCK_ROUGHNESS`, dimensions, and materials control the style.
+`WALLS_ENABLED`, `CEILING_ENABLED`, and `MESH_EDGES_ENABLED` allow reload-based
+comparisons; the flat floor and its movement boundaries remain in every mode.
+The cave launcher does not change the town host's selected world.
+
+The shared profiling controls described below are available here too, with
+exports/captures under gitignored `profiling-output\cave\`. Enable telemetry and
+move/rotate/zoom to record rebuilds; idle GUI frames are not benchmark samples.
+
 ## Interactive town CPU profiling
 
 Run the [profiling town](Animation/ported_demos/town_hot_reload_profiling.py):
@@ -91,6 +123,8 @@ It reuses the [original host](Animation/ported_demos/town_hot_reload.py) and
 host still starts without instrumentation. Both retain yaw/pitch/zoom sliders,
 arrow-key movement, terrain following, reset, and the startup
 `USE_SWEEP_AND_PRUNE` switch. Move/resize the profiling window as needed.
+The shared camera zoom range is 0.25x to 16x (default 3.5x), including the cave
+launcher.
 
 ### Comparing world features
 

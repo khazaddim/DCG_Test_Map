@@ -31,13 +31,14 @@ from Animation.draw_in_window_3d_framework.profiling import RenderTelemetry
 # Change this one value to select the editable world loaded by this host.
 WORLD_MODULE_NAME = "Animation.ported_demos.town_hot_reload_world"
 # WORLD_MODULE_NAME = "Animation.ported_demos.open_room_hot_reload_world"  # wizard room
+# WORLD_MODULE_NAME = "Animation.ported_demos.cave_hot_reload_world"
 world = importlib.import_module(WORLD_MODULE_NAME)
 
 VIEW_W = 900
 VIEW_H = 600
 PITCH_MIN = 0.0
 PITCH_MAX = 78.0
-ZOOM_MIN = 0.75
+ZOOM_MIN = 0.25
 ZOOM_MAX = 16.0
 ZOOM_DEFAULT = 3.5
 CONTROLS_HEIGHT = 250.0
@@ -298,8 +299,10 @@ def build_ui(
     context: dcg.Context, *, telemetry: RenderTelemetry | None = None,
     use_sweep_and_prune: bool | None = None,
     primary: bool = True,
+    world_module: ModuleType | None = None,
 ) -> HotReloadTownController:
-    prepared = build_world(context, world)
+    selected_world = world if world_module is None else world_module
+    prepared = build_world(context, selected_world)
     road_texture, scene, avatar = prepared.road_texture, prepared.scene, prepared.avatar
     collisions, terrain = prepared.collisions, prepared.terrain
     initial_target = avatar.center if terrain is None else (avatar.center[0], avatar.center[1], avatar.center[2])
@@ -321,7 +324,7 @@ def build_ui(
         primary=primary, x=0, y=0,
     ) as window:
         with dcg.VerticalLayout(context, parent=window) as content:
-            dcg.Text(context, parent=content, value=f"Edit {WORLD_MODULE_NAME.rsplit('.', 1)[-1]}.py, then reload the world.")
+            dcg.Text(context, parent=content, value=f"Edit {selected_world.__name__.rsplit('.', 1)[-1]}.py, then reload the world.")
             with dcg.ChildWindow(
                 context,
                 parent=content,
@@ -351,7 +354,7 @@ def build_ui(
                 status = dcg.Text(context, parent=controls, value="")
                 reload_status = dcg.Text(context, parent=controls, value="World definition loaded.")
                 controller = HotReloadTownController(
-                    viewport, avatar, context, road_texture, world, collisions, status, reload_status,
+                    viewport, avatar, context, road_texture, selected_world, collisions, status, reload_status,
                     prepared_world=prepared,
                 )
                 dcg.Button(context, parent=controls, label="Reload world", callback=controller.reload_world)

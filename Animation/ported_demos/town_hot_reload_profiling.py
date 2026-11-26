@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 import sys
 import traceback
+from types import ModuleType
 
 import dearcygui as dcg
 
@@ -19,14 +20,17 @@ from Animation.ported_demos import town_hot_reload as host
 USE_SWEEP_AND_PRUNE = host.USE_SWEEP_AND_PRUNE
 
 
-def build_ui(context: dcg.Context) -> tuple[host.HotReloadTownController, ProfilingPanel]:
+def build_ui(
+    context: dcg.Context, *, world_module: ModuleType | None = None,
+    output_directory: Path = REPO_ROOT / "profiling-output" / "town",
+) -> tuple[host.HotReloadTownController, ProfilingPanel]:
     telemetry = RenderTelemetry()
     controller = host.build_ui(
         context, telemetry=telemetry, use_sweep_and_prune=USE_SWEEP_AND_PRUNE,
-        primary=False,
+        primary=False, world_module=world_module,
     )
     panel = ProfilingPanel(
-        context, telemetry, output_directory=REPO_ROOT / "profiling-output" / "town",
+        context, telemetry, output_directory=output_directory,
     )
     panel.window.x = host.VIEW_W + 80
     panel.window.y = 0
@@ -34,13 +38,17 @@ def build_ui(context: dcg.Context) -> tuple[host.HotReloadTownController, Profil
     return controller, panel
 
 
-def main() -> None:
+def main(
+    *, world_module: ModuleType | None = None,
+    output_directory: Path = REPO_ROOT / "profiling-output" / "town",
+    title: str = "DCG Test Map - Town CPU profiling",
+) -> None:
     context = dcg.Context()
     context.viewport.initialize(
-        title="DCG Test Map - Town CPU profiling",
+        title=title,
         width=host.VIEW_W + 740, height=host.VIEW_H + 340,
     )
-    controller, panel = build_ui(context)
+    controller, panel = build_ui(context, world_module=world_module, output_directory=output_directory)
     try:
         while context.running:
             panel.process_actions()
