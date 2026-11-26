@@ -141,6 +141,33 @@ flags; hiding walls does not remove the cave's floor boundary. All geometry and
 movement configuration update together on reload, with failure preservation.
 Profiling exports/captures go to gitignored `profiling-output\complex-cave\`.
 
+### Trippy Cave
+
+Run the [Trippy Cave launcher](Animation/ported_demos/trippy_cave_hot_reload_profiling.py):
+
+```powershell
+.\.venv\Scripts\python.exe Animation\ported_demos\trippy_cave_hot_reload_profiling.py
+```
+
+[Its editable world](Animation/ported_demos/trippy_cave_hot_reload_world.py)
+has a separate winding outline, violet rock, cyan floor veins, ten clusters of
+faceted crystals, and bright floating gems. The floor is flat and traversable;
+crystal clusters have conservative square collision bounds derived from their
+mesh vertices, while floating gems leave room for the player underneath.
+There is no water in this variant. The neon appearance uses solid colors and
+directional face shading, not bloom, dynamic lighting, or animation.
+
+Edit `OUTLINE_CONTROLS`, crystal placements, palettes, or tessellation and press
+**Reload world**. `CRYSTALS_ENABLED` removes both crystal geometry and blockers;
+`FLOATING_GEMS_ENABLED` and `FLOOR_VEINS_ENABLED` independently simplify the
+visual workload. Floor veins are flush replacement patches, not coplanar
+overlays. Wall/ceiling visibility and mesh-edge flags also remain available.
+Exports/captures go to gitignored `profiling-output\trippy-cave\`.
+
+The natural complex cave retains its existing appearance and behavior. It and
+Trippy Cave share [stateless cave geometry helpers](Animation/ported_demos/cave_geometry.py),
+but each reloadable world owns its outline, materials, props, and feature flags.
+
 ## Interactive town CPU profiling
 
 Run the [profiling town](Animation/ported_demos/town_hot_reload_profiling.py):
