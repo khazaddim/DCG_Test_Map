@@ -151,8 +151,16 @@ class ProfilingPanel:
                 f"candidates {sort.get('bounds_candidate_pair_count', 0)} | "
                 f"exact {sort.get('exact_test_count', 0)} | skipped {sort.get('skipped_pair_count', 0)} | "
                 f"edges {sort.get('accepted_edge_count', 0)} | "
-                f"cycle {counts['cycle_detected']}"
+                f"cycle {counts['cycle_detected']}\n"
+                f"Exact backend: {sort.get('exact_backend', 'python')} | "
+                f"Taichi pairs {sort.get('taichi_pair_count', 0)} | "
+                f"Python pairs {sort.get('python_pair_count', 0)} | "
+                f"fallback pairs {sort.get('fallback_pair_count', 0)} | "
+                f"init {sort.get('backend_initialization_ns', 0) / 1e6:.2f} ms | "
+                f"first use {sort.get('backend_first_use_ns', 0) / 1e6:.2f} ms"
             )
+            if sort.get("backend_diagnostic"):
+                self.counters.value += "\n" + sort["backend_diagnostic"]
             total = summaries["total_rebuild"]
             self.total.value = (
                 f"Total latest / mean / P95: {total.latest_ms:.3f} / {total.mean_ms:.3f} / {total.p95_ms:.3f} ms"

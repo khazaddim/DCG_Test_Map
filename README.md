@@ -78,6 +78,29 @@ renderer with a per-pixel depth buffer.
 
 For the larger reference demo, inspect `Demos/main_demo/drawings.py`.
 
+## Optional Taichi exact-test profiling
+
+The shared profiling launchers accept `--taichi-exact-tests` to opt into the
+single-threaded Taichi CPU evaluator at the renderer's exact overlap-test stage.
+For example:
+
+```powershell
+.\.venv-taichi\Scripts\python.exe Animation\ported_demos\organic_frozen_temple_hot_reload_profiling.py --taichi-exact-tests
+```
+
+The same option is available for Town, Cave, Complex Cave, Trippy Cave,
+Volcano Cave, Frozen Temple, and Organic Frozen Temple. Python remains the
+default; omit the option to return to the existing Python exact-test path.
+The profiling panel and JSON/CSV exports identify the actual batch backend
+(`python`, `taichi`, or `mixed`), Taichi/Python/fallback pair counts, and any
+fallback diagnostic. Taichi initialization and the first exact-stage use are
+reported separately. Telemetry starts enabled for this opt-in so the cold first
+rebuild and later warm rebuilds are both recorded; the normal exact-stage and
+total-rebuild timing boundaries are unchanged. Unsupported pairs fall back
+individually to Python. If Taichi is missing or a recognized runtime failure
+occurs, the incomplete batch is discarded, the full batch is evaluated in
+Python, and later rebuilds remain on Python with the failure shown in diagnostics.
+
 ## Interactive cave CPU profiling
 
 Run the [cave profiling example](Animation/ported_demos/cave_hot_reload_profiling.py):

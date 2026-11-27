@@ -26,6 +26,7 @@ if str(REPO_ROOT) not in sys.path:
 from Animation.draw_in_window_3d_framework import Camera3D, CpuRenderer3D, DrawInWindow3D, EdgeBandFollowController, OverlapDepthSorter
 from Animation.draw_in_window_3d_framework import Box3D, CollisionWorld, Scene3D, TerrainSurface, TraversalSettings
 from Animation.draw_in_window_3d_framework.profiling import RenderTelemetry
+from Animation.draw_in_window_3d_framework.scene import ExactTestBackend
 
 
 # Change this one value to select the editable world loaded by this host.
@@ -305,6 +306,7 @@ def build_ui(
     use_sweep_and_prune: bool | None = None,
     primary: bool = True,
     world_module: ModuleType | None = None,
+    exact_test_backend: ExactTestBackend | None = None,
 ) -> HotReloadTownController:
     selected_world = world if world_module is None else world_module
     prepared = build_world(context, selected_world)
@@ -321,6 +323,7 @@ def build_ui(
         sorter=OverlapDepthSorter(
             use_sweep_and_prune=USE_SWEEP_AND_PRUNE if use_sweep_and_prune is None else use_sweep_and_prune,
             use_coplanar_edge_filter=USE_COPLANAR_EDGE_FILTER,
+            exact_test_backend=exact_test_backend,
         )
     )
 

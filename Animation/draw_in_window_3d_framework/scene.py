@@ -310,6 +310,25 @@ class SortStats:
     sort_duration_seconds: float
     candidate_strategy: str
     skipped_pair_count: int = 0
+    exact_backend: str = "python"
+    taichi_pair_count: int = 0
+    python_pair_count: int = 0
+    fallback_pair_count: int = 0
+    backend_diagnostic: str = ""
+    backend_initialization_ns: int = 0
+    backend_first_use_ns: int = 0
+
+
+@dataclass(frozen=True)
+class ExactTestOutcome:
+    edges: tuple[tuple[int, int], ...]
+    exact_backend: str
+    taichi_pair_count: int
+    python_pair_count: int
+    fallback_pair_count: int = 0
+    diagnostic: str = ""
+    initialization_ns: int = 0
+    first_use_ns: int = 0
 
 
 @dataclass(frozen=True)
@@ -328,6 +347,19 @@ class RenderSorter(Protocol):
         entries: Iterable[ProjectedRenderEntry],
         frame: FrameContext | None = None,
     ) -> SortResult:
+        ...
+
+
+class ExactTestBackend(Protocol):
+    def test_overlaps(
+        self,
+        entries: Sequence[ProjectedRenderEntry],
+        candidate_pairs: Sequence[tuple[int, int]],
+        frame: FrameContext,
+        *,
+        overlap_area_epsilon: float,
+        depth_epsilon: float,
+    ) -> ExactTestOutcome:
         ...
 
 
@@ -478,6 +510,47 @@ def overlapping_polygon_depths(
     if first_depth is None or second_depth is None:
         return None
     return first_depth, second_depth
+
+
+def _python_exact_test_outcome(
+    entries: Sequence[ProjectedRenderEntry],
+    candidate_pairs: Iterable[tuple[int, int]],
+    frame: FrameContext,
+    *,
+    overlap_area_epsilon: float,
+    depth_epsilon: float,
+    fallback_pair_count: int = 0,
+    diagnostic: str = "",
+    initialization_ns: int = 0,
+    first_use_ns: int = 0,
+) -> ExactTestOutcome:
+    edges: list[tuple[int, int]] = []
+    pair_count = 0
+    for first_index, second_index in candidate_pairs:
+        pair_count += 1
+        depths = overlapping_polygon_depths(
+            entries[first_index],
+            entries[second_index],
+            frame,
+            overlap_area_epsilon=overlap_area_epsilon,
+        )
+        if depths is None or abs(depths[0] - depths[1]) <= depth_epsilon:
+            continue
+        farther = first_index if depths[0] > depths[1] else second_index
+        nearer = second_index if farther == first_index else first_index
+        edges.append((farther, nearer))
+    if fallback_pair_count > pair_count:
+        raise ValueError("Python fallback count exceeds the exact-test pair count")
+    return ExactTestOutcome(
+        edges=tuple(edges),
+        exact_backend="python",
+        taichi_pair_count=0,
+        python_pair_count=pair_count,
+        fallback_pair_count=fallback_pair_count,
+        diagnostic=diagnostic,
+        initialization_ns=initialization_ns,
+        first_use_ns=first_use_ns,
+    )
 
 
 @dataclass(frozen=True)
@@ -633,6 +706,7 @@ def _sort_stats(
     cycle_detected: bool,
     sort_duration_seconds: float,
     candidate_strategy: str,
+    exact_test_outcome: ExactTestOutcome,
 ) -> SortStats:
     polygon_entry_count = len(bounds_by_index)
     return SortStats(
@@ -647,6 +721,13 @@ def _sort_stats(
         sort_duration_seconds=sort_duration_seconds,
         candidate_strategy=candidate_strategy,
         skipped_pair_count=candidate_metrics.bounds_candidate_pair_count - exact_test_count,
+        exact_backend=exact_test_outcome.exact_backend,
+        taichi_pair_count=exact_test_outcome.taichi_pair_count,
+        python_pair_count=exact_test_outcome.python_pair_count,
+        fallback_pair_count=exact_test_outcome.fallback_pair_count,
+        backend_diagnostic=exact_test_outcome.diagnostic,
+        backend_initialization_ns=exact_test_outcome.initialization_ns,
+        backend_first_use_ns=exact_test_outcome.first_use_ns,
     )
 
 
@@ -669,12 +750,15 @@ class OverlapDepthSorter:
         depth_epsilon: float = 1e-5,
         use_sweep_and_prune: bool = True,
         use_coplanar_edge_filter: bool = False,
+        exact_test_backend: ExactTestBackend | None = None,
     ) -> None:
         self.overlap_area_epsilon = overlap_area_epsilon
         self.depth_epsilon = depth_epsilon
         self.use_sweep_and_prune = use_sweep_and_prune
         self.use_coplanar_edge_filter = use_coplanar_edge_filter
+        self.exact_test_backend = exact_test_backend
         self.last_sort_stats: SortStats | None = None
+        self.last_exact_test_outcome: ExactTestOutcome | None = None
 
     def sort(
         self, entries: Iterable[ProjectedRenderEntry], frame: FrameContext | None = None,
@@ -683,6 +767,7 @@ class OverlapDepthSorter:
         ordered_entries = tuple(entries)
         if frame is None:
             self.last_sort_stats = None
+            self.last_exact_test_outcome = None
             return AverageDepthSorter().sort(ordered_entries)
 
         start_time = perf_counter()
@@ -697,6 +782,8 @@ class OverlapDepthSorter:
             )
             edges = measurements.measure("exact_tests", self.test_overlaps, ordered_entries, candidate_pairs, frame)
             result, accepted_edge_count = measurements.measure("topological_ordering", self.order_entries, ordered_entries, edges)
+        exact_test_outcome = self.last_exact_test_outcome
+        assert exact_test_outcome is not None
         sort_stats = _sort_stats(
             ordered_entries,
             bounds_by_index=bounds_by_index,
@@ -706,6 +793,7 @@ class OverlapDepthSorter:
             cycle_detected=result.cycle_detected,
             sort_duration_seconds=perf_counter() - start_time,
             candidate_strategy=candidate_strategy,
+            exact_test_outcome=exact_test_outcome,
         )
         self.last_sort_stats = sort_stats
         return SortResult(result.entries, result.cycle_detected, sort_stats)
@@ -728,20 +816,35 @@ class OverlapDepthSorter:
         candidate_pairs: Iterable[tuple[int, int]],
         frame: FrameContext,
     ) -> tuple[tuple[int, int], ...]:
-        edges: list[tuple[int, int]] = []
-        for first_index, second_index in candidate_pairs:
-            depths = overlapping_polygon_depths(
-                entries[first_index],
-                entries[second_index],
+        if self.exact_test_backend is not None:
+            pairs = tuple(candidate_pairs)
+            outcome = self.exact_test_backend.test_overlaps(
+                entries,
+                pairs,
                 frame,
                 overlap_area_epsilon=self.overlap_area_epsilon,
+                depth_epsilon=self.depth_epsilon,
             )
-            if depths is None or abs(depths[0] - depths[1]) <= self.depth_epsilon:
-                continue
-            farther = first_index if depths[0] > depths[1] else second_index
-            nearer = second_index if farther == first_index else first_index
-            edges.append((farther, nearer))
-        return tuple(edges)
+            if (
+                outcome.taichi_pair_count < 0
+                or outcome.python_pair_count < 0
+                or outcome.fallback_pair_count < 0
+                or outcome.taichi_pair_count + outcome.python_pair_count != len(pairs)
+                or outcome.fallback_pair_count > outcome.python_pair_count
+            ):
+                raise RuntimeError("Exact-test backend returned inconsistent pair counts")
+            self.last_exact_test_outcome = outcome
+            return outcome.edges
+
+        outcome = _python_exact_test_outcome(
+            entries,
+            candidate_pairs,
+            frame,
+            overlap_area_epsilon=self.overlap_area_epsilon,
+            depth_epsilon=self.depth_epsilon,
+        )
+        self.last_exact_test_outcome = outcome
+        return outcome.edges
 
     def order_entries(
         self,

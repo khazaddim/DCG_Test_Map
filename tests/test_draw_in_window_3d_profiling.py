@@ -76,6 +76,10 @@ def test_overlap_strategy_counts_are_exported(viewport, sweep) -> None:
     assert stats["bounds_candidate_pair_count"] == stats["exact_test_count"] == expected
     assert stats["accepted_edge_count"] == 150
     assert not stats["cycle_detected"]
+    assert stats["exact_backend"] == "python"
+    assert stats["taichi_pair_count"] == 0
+    assert stats["python_pair_count"] == expected
+    assert stats["fallback_pair_count"] == 0
     assert sample["strategy"] == ("sweep_and_prune" if sweep else "all_pairs")
 
 
@@ -172,11 +176,15 @@ def test_export_schema_units_snapshot_and_csv(viewport, tmp_path) -> None:
     assert sample["effective_flags"] == {"HOUSES_ENABLED": True}
     assert sample["capture_mode"] == "baseline"
     assert set(sample["durations_ns"]) == {*STAGES, "total_rebuild", "unaccounted"}
+    sort_stats = sample["counters"]["sort_stats"]
+    assert sort_stats["exact_backend"] == "python"
+    assert sort_stats["python_pair_count"] == sort_stats["exact_test_count"]
     with (tmp_path / "samples.csv").open(newline="") as stream:
         rows = list(csv.DictReader(stream))
     assert len(rows) == 1
     assert rows[0]["timing_unit"] == "nanoseconds"
     assert int(rows[0]["total_rebuild"]) == sample["durations_ns"]["total_rebuild"]
+    assert json.loads(rows[0]["counters"])["sort_stats"]["exact_backend"] == "python"
     for key in ("effective_flags", "camera", "viewport", "counters"):
         assert json.loads(rows[0][key]) == sample[key]
 

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import importlib
 import importlib.util
 import math
 from pathlib import Path
@@ -983,6 +984,50 @@ def test_taichi_exact_matches_near_and_viewport_clipped_translucent_faces(taichi
     verify_depths(entries, pairs, frame, sorter.overlap_area_epsilon, result)
     assert result.fallback_pairs == 0
     assert result.edges(pairs, sorter.depth_epsilon) == sorter.test_overlaps(entries, pairs, frame)
+
+
+@pytest.mark.parametrize(
+    "world_name",
+    (
+        "town_hot_reload_world",
+        "cave_hot_reload_world",
+        "complex_cave_hot_reload_world",
+        "trippy_cave_hot_reload_world",
+        "volcano_cave_hot_reload_world",
+        "frozen_temple_hot_reload_world",
+        "organic_frozen_temple_hot_reload_world",
+    ),
+)
+def test_taichi_exact_matches_all_profiling_worlds(taichi_exact_eval, world_name: str) -> None:
+    world = importlib.import_module(f"Animation.ported_demos.{world_name}")
+    scene, avatar = world.build_scene()
+    zooms = (3.5, 0.25) if "temple" in world_name else (3.5,)
+    for zoom in zooms:
+        frame = FrameContext(
+            Camera3D(avatar.center, yaw_deg=0.0, pitch_deg=52.0, zoom=zoom),
+            Viewport(900, 600),
+        )
+        renderer = CpuRenderer3D()
+        entries, _ = renderer.project_packets(
+            renderer.collect_packets(scene, frame),
+            frame,
+        )
+        for use_coplanar_edge_filter in (False, True):
+            sorter = OverlapDepthSorter(use_coplanar_edge_filter=use_coplanar_edge_filter)
+            pairs, _, _ = sorter.generate_candidates(entries)
+            python_edges = sorter.test_overlaps(entries, pairs, frame)
+            python_order = sorter.order_entries(entries, python_edges)
+            result = taichi_exact_eval.evaluate(
+                entries,
+                pairs,
+                frame,
+                sorter.overlap_area_epsilon,
+            )
+            taichi_edges = result.edges(pairs, sorter.depth_epsilon)
+            taichi_order = sorter.order_entries(entries, taichi_edges)
+
+            assert taichi_edges == python_edges, (world_name, zoom, use_coplanar_edge_filter)
+            assert taichi_order == python_order, (world_name, zoom, use_coplanar_edge_filter)
 
 
 @pytest.mark.parametrize("seed,count", ((54010, 8), (54012, 32), (54013, 64)))
