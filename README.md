@@ -115,7 +115,9 @@ Omit that option to turn reuse back on. The profiling panel and JSON/CSV
 `counters.reuse_camera_transforms` identify the selected mode. For a useful
 comparison, keep the world, camera, viewport, and Taichi setting the same;
 compare warm `projection_clipping` and total-rebuild samples after resetting
-the rolling window in each run.
+the rolling window in each run. For an introduction to the rendering phases
+and how the polygon data is reused, see
+[Camera transform reuse](Animation/draw_in_window_3d_framework/CAMERA_TRANSFORM_REUSE.md).
 
 ## Interactive cave CPU profiling
 
