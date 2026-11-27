@@ -839,14 +839,18 @@ def test_overlap_sorter_strategies_match_distributed_projected_faces_and_mixed_e
     assert_sorter_strategies_agree(tuple(entries), frame)
 
 
-def test_overlap_sorter_strategies_match_real_geometric_cycle_fallback() -> None:
-    frame = make_sort_frame()
-    entries = (
+def geometric_cycle_entries(frame):
+    return (
         make_screen_plane_entry(frame, 41, ((40.0, 40.0), (160.0, 40.0), (160.0, 60.0), (40.0, 60.0)), 0.01),
         make_screen_plane_entry(frame, 7, ((140.0, 40.0), (160.0, 40.0), (160.0, 160.0), (140.0, 160.0)), lambda _x, y: 0.01 + 0.00001 * (100.0 - y)),
         make_screen_plane_entry(frame, 23, ((40.0, 50.0), (50.0, 40.0), (160.0, 150.0), (150.0, 160.0)), lambda x, _y: 0.01 + 0.00001 * (x - 100.0)),
         make_screen_plane_entry(frame, 3, ((70.0, 70.0), (90.0, 70.0), (90.0, 90.0), (70.0, 90.0)), 0.004),
     )
+
+
+def test_overlap_sorter_strategies_match_real_geometric_cycle_fallback() -> None:
+    frame = make_sort_frame()
+    entries = geometric_cycle_entries(frame)
 
     all_pairs = OverlapDepthSorter(use_sweep_and_prune=False).sort(entries, frame)
     sweep = OverlapDepthSorter(use_sweep_and_prune=True).sort(entries, frame)
@@ -856,6 +860,129 @@ def test_overlap_sorter_strategies_match_real_geometric_cycle_fallback() -> None
     assert sweep.cycle_detected is True
     assert [entry.stable_index for entry in all_pairs.entries] == expected
     assert [entry.stable_index for entry in sweep.entries] == expected
+
+
+@pytest.fixture(scope="module")
+def taichi_exact_eval():
+    ti = pytest.importorskip("taichi")
+    from Animation.ported_demos import taichi_exact_eval as backend
+
+    ti.init(arch=ti.cpu, cpu_max_num_threads=2, default_fp=ti.f64,
+            fast_math=False, offline_cache=False, enable_fallback=False)
+    yield backend
+    ti.reset()
+
+
+def test_taichi_exact_pair_boundaries_and_partial_fallback(taichi_exact_eval, monkeypatch) -> None:
+    from Animation.ported_demos.benchmark_taichi_exact import verify_depths
+
+    frame = make_sort_frame()
+    flat = make_flat_polygon(0, 100)
+    box = ((80.0, 80.0), (120.0, 80.0), (120.0, 120.0), (80.0, 120.0))
+    cases = (
+        ("opposite winding", make_screen_plane_entry(frame, 1, box[::-1], 0.005), True),
+        ("same plane", make_flat_polygon(2, 100), True),
+        ("inside depth epsilon", make_flat_polygon(3, 100 + 0.999 * 1e-5), True),
+        ("outside depth epsilon", make_flat_polygon(4, 100 + 1.001 * 1e-5), True),
+        ("near plane equality", make_flat_polygon(5, 1.0), True),
+        ("behind near plane", make_flat_polygon(6, 0.99), False),
+        ("collinear camera points", make_camera_space_polygon_entry(
+            frame, 7, ((-10.0, -10.0, 100.0), (0.0, 0.0, 100.0), (10.0, 10.0, 100.0))), False),
+        ("edge touch", make_bounds_entry(8, (120.0, 90.0, 130.0, 110.0)), False),
+        ("point touch", make_bounds_entry(9, (120.0, 120.0, 130.0, 130.0)), False),
+        ("AABB overlaps but polygons separate", make_projected_entry(
+            stable_index=10, points=((118.0, 126.0), (126.0, 118.0), (130.0, 130.0))), False),
+        ("area equal to epsilon", make_bounds_entry(11, (90.0, 90.0, 90.5, 90.5)), False),
+        ("area just below epsilon", make_bounds_entry(12, (90.0, 90.0, 90.499, 90.5)), False),
+        ("area just above epsilon", make_bounds_entry(13, (90.0, 90.0, 90.501, 90.5)), True),
+        ("missing plane", ProjectedRenderEntry("polygon", 14, 100, box), False),
+        ("non-polygon", make_projected_entry(stable_index=15, kind="line", points=box), False),
+        ("duplicate edge", make_projected_entry(stable_index=16, points=(box[0], *box)), False),
+        ("parallel ray", ProjectedRenderEntry("polygon", 17, 100, box,
+                                             ((0, 0, 100), (0, 10, 100), (0, 0, 110))), False),
+        ("oversized polygon", make_screen_plane_entry(frame, 18, tuple(
+            (100 + 10 * math.cos(angle), 100 + 10 * math.sin(angle))
+            for angle in (i * math.tau / 17 for i in range(17))
+        ), 0.005), True),
+    )
+    entries = (flat, *(entry for _, entry, _ in cases))
+    pairs = tuple((0, i) for i in range(1, len(entries)))
+    sorter = OverlapDepthSorter()
+    monkeypatch.setattr(taichi_exact_eval, "BATCH_SIZE", 4)
+    result = taichi_exact_eval.evaluate(entries, pairs, frame, sorter.overlap_area_epsilon)
+    assert result.fallback_pairs == 1
+    for row, (name, _, valid) in enumerate(cases):
+        assert bool(result.statuses[row]) == valid, name
+    verify_depths(entries, pairs, frame, sorter.overlap_area_epsilon, result)
+    assert result.edges(pairs, sorter.depth_epsilon) == sorter.test_overlaps(entries, pairs, frame)
+    empty = taichi_exact_eval.evaluate(entries, (), frame, sorter.overlap_area_epsilon)
+    assert empty.edges((), sorter.depth_epsilon) == () and empty.kernel_sync_ns == 0
+
+
+def test_taichi_exact_preserves_real_geometric_cycle(taichi_exact_eval) -> None:
+    from Animation.ported_demos.benchmark_taichi_exact import verify_depths
+
+    frame = make_sort_frame()
+    entries = geometric_cycle_entries(frame)
+    sorter = OverlapDepthSorter()
+    pairs, _, _ = sorter.generate_candidates(entries)
+    result = taichi_exact_eval.evaluate(entries, pairs, frame, sorter.overlap_area_epsilon)
+    verify_depths(entries, pairs, frame, sorter.overlap_area_epsilon, result)
+    edges = result.edges(pairs, sorter.depth_epsilon)
+    baseline = sorter.test_overlaps(entries, pairs, frame)
+    assert result.fallback_pairs == 0
+    assert edges == baseline
+    ordered = sorter.order_entries(entries, edges)
+    assert ordered == sorter.order_entries(entries, baseline)
+    assert ordered[0].cycle_detected
+
+
+def test_taichi_exact_handles_maximum_convex_intersection(taichi_exact_eval) -> None:
+    from Animation.ported_demos.benchmark_taichi_exact import verify_depths
+
+    frame = make_sort_frame()
+    sides = taichi_exact_eval.MAX_VERTICES
+    step = math.tau / sides
+    entries = tuple(
+        make_screen_plane_entry(frame, i, tuple(
+            (100 + 20 * math.cos(j * step + phase), 100 + 20 * math.sin(j * step + phase))
+            for j in range(sides)
+        ), 1.0 / (100 + i))
+        for i, phase in enumerate((0.0, step * 0.5))
+    )
+    assert len(scene_module._convex_polygon_intersection(entries[0].points, entries[1].points)) == 2 * sides
+    pairs = ((0, 1), (1, 0))
+    sorter = OverlapDepthSorter()
+    result = taichi_exact_eval.evaluate(entries, pairs, frame, sorter.overlap_area_epsilon)
+    verify_depths(entries, pairs, frame, sorter.overlap_area_epsilon, result)
+    assert result.fallback_pairs == 0
+    assert result.edges(pairs, sorter.depth_epsilon) == ((1, 0), (1, 0))
+
+
+def test_taichi_exact_matches_near_and_viewport_clipped_translucent_faces(taichi_exact_eval) -> None:
+    from Animation.ported_demos.benchmark_taichi_exact import verify_depths
+
+    frame = FrameContext(Camera3D((0, 0, 0), 0, 78, 1, near_plane=55), Viewport(100, 100))
+    scene = Scene3D()
+    for offset, height in ((0, 0), (5, 1), (-5, 0)):
+        scene.add(Polygon3D(
+            ((-150 + offset, 10, height), (150 + offset, 10, height),
+             (150 + offset, 80, height), (-150 + offset, 80, height)),
+            SolidMaterial(fill=(200, 200, 200, 100)), cull_back_face=False,
+        ))
+    sorter = OverlapDepthSorter()
+    renderer = CpuRenderer3D(sorter)
+    packets = renderer.collect_packets(scene, frame)
+    assert any(frame.camera.world_to_camera(point, frame.viewport)[2] < frame.camera.near_plane
+               for packet in packets for point in packet.points)
+    entries, _ = renderer.project_packets(packets, frame)
+    pairs, _, _ = sorter.generate_candidates(entries)
+    assert len(entries) == 3 and len(pairs) == 3
+    assert any(x in (0, 100) for entry in entries for x, _ in entry.points)
+    result = taichi_exact_eval.evaluate(entries, pairs, frame, sorter.overlap_area_epsilon)
+    verify_depths(entries, pairs, frame, sorter.overlap_area_epsilon, result)
+    assert result.fallback_pairs == 0
+    assert result.edges(pairs, sorter.depth_epsilon) == sorter.test_overlaps(entries, pairs, frame)
 
 
 @pytest.mark.parametrize("seed,count", ((54010, 8), (54012, 32), (54013, 64)))

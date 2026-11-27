@@ -352,6 +352,29 @@ the experiment sequentially for each view, so external load or drift can distort
 comparisons. Five samples give a nearest-rank P95 equal to the maximum; repeat
 on an otherwise idle machine before drawing performance conclusions.
 
+### Headless Taichi exact-test experiment
+
+The [Taichi comparison runner](Animation/ported_demos/benchmark_taichi_exact.py)
+uses an optional `.venv-taichi` environment with Taichi, NumPy, and DearCyGui.
+It does not launch a viewport or change the demo's sorter. It feeds identical
+projected entries and candidate pairs (coplanar filter off) to Python and
+Taichi CPU with one and multiple threads, using `float64`. From the repository
+root, with other tests and benchmarks idle:
+
+```powershell
+.\.venv-taichi\Scripts\python.exe Animation\ported_demos\benchmark_taichi_exact.py --samples 20 --warmups 2 --threads 8 --output profiling-output\taichi-exact-temple.json
+```
+
+For a smoke test, add `--case synthetic-100`, use one sample and zero warmups,
+and choose a fresh output filename. The full run checks four Organic Frozen
+Temple views and three synthetic workloads. The JSON reports actual backend
+pair counts, initialization and first-call latency separately from warm
+end-to-end exact-test timings. It excludes projection, broad phase, parity
+checks, graph ordering, and drawing; it does not measure FPS. Unsupported
+polygon sizes and scratch overflow fall back per pair. A backend failure,
+full fallback, or parity mismatch fails the run rather than publishing a
+successful comparison.
+
 ### Comparing world features
 
 Edit world constants, save, and press **Reload world**. Existing feature flags
