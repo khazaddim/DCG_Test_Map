@@ -30,6 +30,11 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help="opt in to Taichi CPU exact overlap tests; defaults to Python",
     )
+    parser.add_argument(
+        "--no-reuse-camera-transforms",
+        action="store_true",
+        help="use repeated world-to-camera transforms for projection comparison",
+    )
     return parser.parse_args(argv)
 
 
@@ -37,11 +42,13 @@ def build_ui(
     context: dcg.Context, *, world_module: ModuleType | None = None,
     output_directory: Path = REPO_ROOT / "profiling-output" / "town",
     exact_test_backend: ExactTestBackend | None = None,
+    reuse_camera_transforms: bool = True,
 ) -> tuple[host.HotReloadTownController, ProfilingPanel]:
     telemetry = RenderTelemetry(enabled=exact_test_backend is not None)
     controller = host.build_ui(
         context, telemetry=telemetry, use_sweep_and_prune=USE_SWEEP_AND_PRUNE,
         primary=False, world_module=world_module, exact_test_backend=exact_test_backend,
+        reuse_camera_transforms=reuse_camera_transforms,
     )
     panel = ProfilingPanel(
         context, telemetry, output_directory=output_directory,
@@ -75,6 +82,7 @@ def main(
         world_module=world_module,
         output_directory=output_directory,
         exact_test_backend=exact_test_backend,
+        reuse_camera_transforms=not args.no_reuse_camera_transforms,
     )
     try:
         while context.running:

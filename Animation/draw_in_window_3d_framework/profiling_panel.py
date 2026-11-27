@@ -156,6 +156,7 @@ class ProfilingPanel:
                 f"Taichi pairs {sort.get('taichi_pair_count', 0)} | "
                 f"Python pairs {sort.get('python_pair_count', 0)} | "
                 f"fallback pairs {sort.get('fallback_pair_count', 0)} | "
+                f"camera transform reuse {'on' if counts['reuse_camera_transforms'] else 'off'}\n"
                 f"init {sort.get('backend_initialization_ns', 0) / 1e6:.2f} ms | "
                 f"first use {sort.get('backend_first_use_ns', 0) / 1e6:.2f} ms"
             )

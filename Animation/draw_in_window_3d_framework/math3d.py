@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import math
-from typing import TypeAlias
+from typing import Sequence, TypeAlias
 
 
 Vec2: TypeAlias = tuple[float, float]
@@ -182,7 +182,7 @@ class ProjectedQuad:
     average_depth: float
 
 
-def clip_polygon_near(points: list[Vec3], near_plane: float) -> list[Vec3]:
+def clip_polygon_near(points: Sequence[Vec3], near_plane: float) -> list[Vec3]:
     if not points:
         return []
     output: list[Vec3] = []
@@ -332,7 +332,7 @@ def clip_line_to_viewport(p0: Vec2, p1: Vec2, viewport: Viewport) -> tuple[Vec2,
     )
 
 
-def average_depth(points: tuple[Vec3, ...] | list[Vec3]) -> float:
+def average_depth(points: Sequence[Vec3]) -> float:
     return sum(point[2] for point in points) / len(points)
 
 
@@ -383,6 +383,9 @@ class ProjectionPipeline:
 
     def project_polygon(self, points: tuple[Vec3, ...] | list[Vec3]) -> ProjectedPolygon | None:
         camera_points = [self.camera.world_to_camera(point, self.viewport) for point in points]
+        return self._project_camera_polygon(camera_points)
+
+    def _project_camera_polygon(self, camera_points: Sequence[Vec3]) -> ProjectedPolygon | None:
         clipped_camera = clip_polygon_near(camera_points, self.camera.near_plane)
         if len(clipped_camera) < 3:
             return None
@@ -420,6 +423,11 @@ class ProjectionPipeline:
         if len(points) != 4:
             return None
         camera_points = [self.camera.world_to_camera(point, self.viewport) for point in points]
+        return self._project_camera_complete_quad(camera_points)
+
+    def _project_camera_complete_quad(self, camera_points: Sequence[Vec3]) -> ProjectedQuad | None:
+        if len(camera_points) != 4:
+            return None
         if any(point[2] < self.camera.near_plane for point in camera_points):
             return None
         screen_points = [

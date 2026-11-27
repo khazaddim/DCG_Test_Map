@@ -307,6 +307,7 @@ def build_ui(
     primary: bool = True,
     world_module: ModuleType | None = None,
     exact_test_backend: ExactTestBackend | None = None,
+    reuse_camera_transforms: bool = True,
 ) -> HotReloadTownController:
     selected_world = world if world_module is None else world_module
     prepared = build_world(context, selected_world)
@@ -324,7 +325,8 @@ def build_ui(
             use_sweep_and_prune=USE_SWEEP_AND_PRUNE if use_sweep_and_prune is None else use_sweep_and_prune,
             use_coplanar_edge_filter=USE_COPLANAR_EDGE_FILTER,
             exact_test_backend=exact_test_backend,
-        )
+        ),
+        reuse_camera_transforms=reuse_camera_transforms,
     )
 
     with dcg.Window(

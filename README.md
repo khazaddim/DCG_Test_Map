@@ -101,6 +101,22 @@ individually to Python. If Taichi is missing or a recognized runtime failure
 occurs, the incomplete batch is discarded, the full batch is evaluated in
 Python, and later rebuilds remain on Python with the failure shown in diagnostics.
 
+### Comparing camera-transform reuse
+
+Camera-space vertex reuse is on by default. To compare it with the original
+repeated-transform path, restart any of the seven profiling launchers with
+`--no-reuse-camera-transforms`. For example:
+
+```powershell
+.\.venv-taichi\Scripts\python.exe Animation\ported_demos\organic_frozen_temple_hot_reload_profiling.py --taichi-exact-tests --no-reuse-camera-transforms
+```
+
+Omit that option to turn reuse back on. The profiling panel and JSON/CSV
+`counters.reuse_camera_transforms` identify the selected mode. For a useful
+comparison, keep the world, camera, viewport, and Taichi setting the same;
+compare warm `projection_clipping` and total-rebuild samples after resetting
+the rolling window in each run.
+
 ## Interactive cave CPU profiling
 
 Run the [cave profiling example](Animation/ported_demos/cave_hot_reload_profiling.py):

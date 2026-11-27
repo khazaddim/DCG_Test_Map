@@ -68,7 +68,26 @@ def test_default_profiling_option_keeps_python_backend_without_initializing_taic
 
     assert not town_hot_reload_profiling.parse_args([]).taichi_exact_tests
     assert town_hot_reload_profiling.parse_args(["--taichi-exact-tests"]).taichi_exact_tests
+    assert not town_hot_reload_profiling.parse_args([]).no_reuse_camera_transforms
+    assert town_hot_reload_profiling.parse_args(["--no-reuse-camera-transforms"]).no_reuse_camera_transforms
     assert OverlapDepthSorter().exact_test_backend is None
+
+
+@pytest.mark.parametrize("argv,expected", (([], True), (["--no-reuse-camera-transforms"], False)))
+def test_profiling_main_routes_camera_transform_option(monkeypatch, argv, expected) -> None:
+    received = {}
+    context = SimpleNamespace(viewport=SimpleNamespace(initialize=lambda **_kwargs: None), running=False)
+    panel = SimpleNamespace(shutdown=lambda: None)
+    monkeypatch.setattr(town_hot_reload_profiling.dcg, "Context", lambda: context)
+
+    def build_ui(_context, **kwargs):
+        received.update(kwargs)
+        return object(), panel
+
+    monkeypatch.setattr(town_hot_reload_profiling, "build_ui", build_ui)
+    town_hot_reload_profiling.main(argv=argv)
+
+    assert received["reuse_camera_transforms"] is expected
 
 
 def test_taichi_backend_reports_mixed_pair_counts_and_reuses_runtime(monkeypatch) -> None:
@@ -211,6 +230,7 @@ def test_backend_instance_survives_world_reload(monkeypatch, tmp_path) -> None:
         context,
         world_module=town_hot_reload_world,
         exact_test_backend=backend,
+        reuse_camera_transforms=False,
         output_directory=tmp_path,
     )
     sorter = controller.viewport.renderer.sorter
@@ -222,5 +242,6 @@ def test_backend_instance_survives_world_reload(monkeypatch, tmp_path) -> None:
     assert controller.reload_status.value == "Reloaded world definition."
     assert controller.viewport.renderer.sorter is sorter
     assert sorter.exact_test_backend is backend
+    assert not controller.viewport.renderer.reuse_camera_transforms
     assert fake_ti.init_calls == 1
     panel.window.delete_item()

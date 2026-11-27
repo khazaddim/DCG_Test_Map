@@ -144,8 +144,9 @@ def _line_depth_at_screen_point(
 
 
 class CpuRenderer3D:
-    def __init__(self, sorter: RenderSorter | None = None) -> None:
+    def __init__(self, sorter: RenderSorter | None = None, *, reuse_camera_transforms: bool = True) -> None:
         self.sorter = sorter or OverlapDepthSorter()
+        self.reuse_camera_transforms = reuse_camera_transforms
         self.depth_epsilon = 1e-5
         self._persistent_overlays: dict[object, PersistentOverlayState] = {}
 
@@ -219,6 +220,7 @@ class CpuRenderer3D:
             emitted_count=emitted_count,
             cycle_detected=sorted_result.cycle_detected,
             sort_stats=sorted_result.sort_stats,
+            reuse_camera_transforms=self.reuse_camera_transforms,
         )
 
     def collect_packets(self, scene: Scene3D, frame: FrameContext) -> tuple[WorldRenderPacket, ...]:
@@ -364,14 +366,21 @@ class CpuRenderer3D:
                 frame.camera.world_to_camera(point, frame.viewport)
                 for point in packet.points
             )
-            if any(point[2] < frame.camera.near_plane for point in raw_camera_points):
-                raw_camera_points = ()
+            fully_in_front = not any(point[2] < frame.camera.near_plane for point in raw_camera_points)
             complete_quad = (
-                pipeline.project_complete_quad(packet.points)
+                (
+                    pipeline._project_camera_complete_quad(raw_camera_points)
+                    if self.reuse_camera_transforms
+                    else pipeline.project_complete_quad(packet.points)
+                )
                 if image_material is not None and not packet.image_clip_to_viewport
                 else None
             )
-            projected = pipeline.project_polygon(packet.points)
+            projected = (
+                pipeline._project_camera_polygon(raw_camera_points)
+                if self.reuse_camera_transforms
+                else pipeline.project_polygon(packet.points)
+            )
             if projected is None:
                 return None
             image_points: tuple[tuple[float, float], ...] = ()
@@ -379,7 +388,7 @@ class CpuRenderer3D:
                 points = complete_quad.points
                 average_depth = complete_quad.average_depth
                 material = image_material
-            elif image_material is not None and packet.image_clip_to_viewport and len(raw_camera_points) == 4:
+            elif image_material is not None and packet.image_clip_to_viewport and fully_in_front and len(raw_camera_points) == 4:
                 points = projected.points
                 average_depth = projected.average_depth
                 material = image_material
@@ -410,9 +419,10 @@ class CpuRenderer3D:
                 stable_index=stable_index,
                 average_depth=average_depth,
                 points=points,
-                camera_points=raw_camera_points or tuple(
-                    frame.camera.world_to_camera(point, frame.viewport)
-                    for point in packet.points
+                camera_points=(
+                    raw_camera_points
+                    if self.reuse_camera_transforms or fully_in_front
+                    else tuple(frame.camera.world_to_camera(point, frame.viewport) for point in packet.points)
                 ),
                 material=material,
                 animation_projection=packet.animation_projection,

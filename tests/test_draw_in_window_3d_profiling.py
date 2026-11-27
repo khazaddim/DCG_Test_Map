@@ -11,7 +11,7 @@ import dearcygui as dcg
 import pytest
 
 from Animation.draw_in_window_3d_framework import (
-    AverageDepthSorter, DrawInWindow3D, Line3D, OverlapDepthSorter, RenderStats,
+    AverageDepthSorter, CpuRenderer3D, DrawInWindow3D, Line3D, OverlapDepthSorter, RenderStats,
     Scene3D, TerrainMode, TriangleMesh3D,
 )
 from Animation.draw_in_window_3d_framework.profiling import (
@@ -81,6 +81,22 @@ def test_overlap_strategy_counts_are_exported(viewport, sweep) -> None:
     assert stats["python_pair_count"] == expected
     assert stats["fallback_pair_count"] == 0
     assert sample["strategy"] == ("sweep_and_prune" if sweep else "all_pairs")
+
+
+def test_camera_transform_mode_is_recorded_and_exported(viewport, tmp_path) -> None:
+    viewport.renderer = CpuRenderer3D(reuse_camera_transforms=False)
+    viewport.render_now()
+    panel = ProfilingPanel(viewport.context, viewport.telemetry, output_directory=tmp_path)
+    panel.refresh(now=0.0)
+    assert "camera transform reuse off" in panel.counters.value
+    viewport.telemetry.export(tmp_path / "transforms.json")
+    data = json.loads((tmp_path / "transforms.json").read_text())
+    assert data["samples"][-1]["counters"]["reuse_camera_transforms"] is False
+    viewport.telemetry.export(tmp_path / "transforms.csv")
+    with (tmp_path / "transforms.csv").open(newline="") as stream:
+        row = next(csv.DictReader(stream))
+    assert json.loads(row["counters"])["reuse_camera_transforms"] is False
+    panel.window.delete_item()
 
 
 def test_skipped_sort_stages_and_strategy_window(viewport) -> None:

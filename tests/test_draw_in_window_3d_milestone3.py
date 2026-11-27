@@ -304,6 +304,101 @@ def test_image_material_uses_complete_quad_and_preserves_tessellation_metadata()
     assert len(entry.points) == 4
 
 
+@pytest.mark.parametrize(
+    "case",
+    ("solid", "image", "viewport_clipped_image", "viewport_fallback_image",
+     "near_clipped_image", "near_clipped_viewport_image"),
+)
+@pytest.mark.parametrize("reuse_camera_transforms", (True, False))
+def test_polygon_projection_transforms_and_preserves_output(
+    monkeypatch, case: str, reuse_camera_transforms: bool,
+) -> None:
+    frame = make_sort_frame()
+    camera = frame.camera
+    viewport = frame.viewport
+    material = ImageMaterial(texture=object()) if case != "solid" else SolidMaterial(fill=(100, 120, 140))
+    if case.startswith("near_clipped"):
+        distance = camera.distance(viewport)
+        points = (
+            (-0.05, -0.05, distance - 0.5),
+            (0.5, -0.5, distance - 10.0),
+            (0.5, 0.5, distance - 10.0),
+            (-0.5, 0.5, distance - 10.0),
+        )
+    elif case.startswith("viewport_"):
+        points = ((-1000.0, -10.0, 50.0), (10.0, -10.0, 50.0),
+                  (10.0, 10.0, 50.0), (-1000.0, 10.0, 50.0))
+    else:
+        points = ((-10.0, -10.0, 50.0), (10.0, -10.0, 50.0),
+                  (10.0, 10.0, 50.0), (-10.0, 10.0, 50.0))
+    packet = scene_module.WorldRenderPacket(
+        kind="polygon",
+        points=points,
+        material=material,
+        image_clip_to_viewport=case in ("viewport_clipped_image", "near_clipped_viewport_image"),
+    )
+    pipeline = ProjectionPipeline(camera, viewport)
+    expected_projection = pipeline.project_polygon(points)
+    expected_camera_points = tuple(camera.world_to_camera(point, viewport) for point in points)
+    expected_quad = pipeline.project_complete_quad(points) if case == "image" else None
+    expected_entry = CpuRenderer3D(reuse_camera_transforms=True)._project_packet(packet, 17, frame, pipeline)
+    assert expected_projection is not None
+    assert expected_entry is not None
+    calls = []
+    world_to_camera = Camera3D.world_to_camera
+
+    def counting_world_to_camera(self, point, current_viewport):
+        calls.append(point)
+        return world_to_camera(self, point, current_viewport)
+
+    monkeypatch.setattr(Camera3D, "world_to_camera", counting_world_to_camera)
+    entry = CpuRenderer3D(reuse_camera_transforms=reuse_camera_transforms)._project_packet(packet, 17, frame, pipeline)
+
+    assert entry is not None
+    repetitions = 1 if reuse_camera_transforms else {
+        "solid": 2, "image": 3, "viewport_clipped_image": 2, "viewport_fallback_image": 3,
+        "near_clipped_image": 4, "near_clipped_viewport_image": 3,
+    }[case]
+    assert calls == list(points) * repetitions
+    assert entry == expected_entry
+    assert entry.stable_index == 17
+    assert entry.camera_points == expected_camera_points
+    assert entry.points == (expected_quad.points if expected_quad is not None else expected_projection.points)
+    assert entry.average_depth == (
+        expected_quad.average_depth if expected_quad is not None else expected_projection.average_depth
+    )
+    if case.startswith("near_clipped"):
+        assert isinstance(entry.material, SolidMaterial)
+        assert any(point[2] < camera.near_plane for point in entry.camera_points)
+    elif case == "viewport_clipped_image":
+        assert entry.material is material
+        assert entry.image_points == tuple(camera.camera_to_screen(point, viewport) for point in expected_camera_points)
+    elif case == "viewport_fallback_image":
+        assert isinstance(entry.material, SolidMaterial)
+    else:
+        assert entry.material is material
+
+
+def test_camera_transform_modes_match_organic_frozen_temple_projection_and_sorting() -> None:
+    from Animation.ported_demos import organic_frozen_temple_hot_reload_world as world
+
+    scene, avatar = world.build_scene()
+    frame = FrameContext(Camera3D(avatar.center, 0.0, 52.0, 3.5), Viewport(900, 600))
+    optimized = CpuRenderer3D(reuse_camera_transforms=True)
+    baseline = CpuRenderer3D(reuse_camera_transforms=False)
+    packets = optimized.collect_packets(scene, frame)
+
+    optimized_entries, optimized_clipped = optimized.project_packets(packets, frame)
+    baseline_entries, baseline_clipped = baseline.project_packets(packets, frame)
+
+    assert optimized_clipped == baseline_clipped
+    assert optimized_entries == baseline_entries
+    optimized_sort = optimized.sorter.sort(optimized_entries, frame)
+    baseline_sort = baseline.sorter.sort(baseline_entries, frame)
+    assert optimized_sort.entries == baseline_sort.entries
+    assert optimized_sort.cycle_detected == baseline_sort.cycle_detected
+
+
 def test_image_material_emits_one_draw_image_per_tessellation_cell() -> None:
     context = dcg.Context()
     texture = dcg.Texture(context)

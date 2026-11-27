@@ -339,6 +339,7 @@ class RenderStats:
     emitted_count: int
     cycle_detected: bool = False
     sort_stats: SortStats | None = None
+    reuse_camera_transforms: bool = True
 
 
 class RenderSorter(Protocol):
