@@ -375,6 +375,20 @@ polygon sizes and scratch overflow fall back per pair. A backend failure,
 full fallback, or parity mismatch fails the run rather than publishing a
 successful comparison.
 
+To compare a GPU backend too, add `--gpu vulkan`, `--gpu cuda`, or
+`--gpu dx11` and use a fresh output filename. GPU mode defaults to `float64`
+and fails if the requested backend cannot run it. `--gpu-float32` is a
+separate precision experiment: it relaxes only the tolerance on numeric
+depths, not checks for depth presence, directed edges, ordering, or cycles.
+For example, to probe Vulkan on a `float32`-only device:
+
+```powershell
+.\.venv-taichi\Scripts\python.exe Animation\ported_demos\benchmark_taichi_exact.py --gpu vulkan --gpu-float32 --case temple-yaw0-zoom3.5 --samples 20 --warmups 2 --output profiling-output\taichi-vulkan-default.json
+```
+
+GPU exact-stage timings include dispatch, transfers, and synchronization.
+A GPU mismatch stops the comparison and does not write a success report.
+
 ### Comparing world features
 
 Edit world constants, save, and press **Reload world**. Existing feature flags

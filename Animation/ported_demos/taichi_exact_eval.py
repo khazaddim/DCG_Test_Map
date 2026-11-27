@@ -1,4 +1,4 @@
-"""Experimental, headless CPU implementation of the exact overlap stage."""
+"""Experimental, headless Taichi implementation of the exact overlap stage."""
 
 from dataclasses import dataclass
 from time import perf_counter_ns
@@ -106,16 +106,18 @@ def clip_polygon(points: ti.template(), scratch: ti.template(), row, a, b, na, n
 
 @ti.kernel
 def evaluate_kernel(
-    points: ti.types.ndarray(dtype=ti.f64, ndim=3),
+    points: ti.types.ndarray(ndim=3),
     counts: ti.types.ndarray(dtype=ti.i32, ndim=1),
-    planes: ti.types.ndarray(dtype=ti.f64, ndim=2),
+    planes: ti.types.ndarray(ndim=2),
     pairs: ti.types.ndarray(dtype=ti.i32, ndim=2),
-    scratch: ti.types.ndarray(dtype=ti.f64, ndim=4),
+    scratch: ti.types.ndarray(ndim=4),
     statuses: ti.types.ndarray(dtype=ti.i32, ndim=1),
-    depths: ti.types.ndarray(dtype=ti.f64, ndim=2),
-    center_x: ti.f64, center_y: ti.f64, focal: ti.f64, near: ti.f64, area_epsilon: ti.f64,
-    axis_epsilon: ti.f64,
+    depths: ti.types.ndarray(ndim=2),
+    params: ti.types.ndarray(ndim=1),
 ):
+    center_x, center_y, focal, near, area_epsilon, axis_epsilon = (
+        params[0], params[1], params[2], params[3], params[4], params[5]
+    )
     for row in range(pairs.shape[0]):
         a, b = pairs[row, 0], pairs[row, 1]
         na, nb = counts[a], counts[b]
@@ -161,16 +163,16 @@ class Evaluation:
         return tuple(pairs[i] if delta[i] > 0 else pairs[i][::-1] for i in rows)
 
 
-def evaluate(entries, pairs, frame, overlap_area_epsilon):
+def evaluate(entries, pairs, frame, overlap_area_epsilon, *, dtype=np.float64):
     start = perf_counter_ns()
     statuses = np.zeros(len(pairs), dtype=np.int32)
     depths = np.zeros((len(pairs), 2), dtype=np.float64)
     if not pairs:
         return Evaluation(statuses, depths, perf_counter_ns() - start, 0, 0, 0)
     pair_array = np.asarray(pairs, dtype=np.int32)
-    points = np.empty((len(entries), MAX_VERTICES, 2), dtype=np.float64)
+    points = np.empty((len(entries), MAX_VERTICES, 2), dtype=dtype)
     counts = np.zeros(len(entries), dtype=np.int32)
-    planes = np.zeros((len(entries), 4), dtype=np.float64)
+    planes = np.zeros((len(entries), 4), dtype=dtype)
     for index in {index for pair in pairs for index in pair}:
         entry = entries[index]
         if entry.kind != "polygon" or len(entry.points) < 3:
@@ -184,15 +186,19 @@ def evaluate(entries, pairs, frame, overlap_area_epsilon):
         if plane is not None:
             origin, normal = plane
             planes[index] = (*normal, dot(normal, origin))
-    scratch = np.empty((min(BATCH_SIZE, len(pairs)), 2, CLIP_CAPACITY, 2), dtype=np.float64)
+    scratch = np.empty((min(BATCH_SIZE, len(pairs)), 2, CLIP_CAPACITY, 2), dtype=dtype)
     cx, cy = frame.viewport.center
-    focal = frame.camera.focal_length(frame.viewport)
+    params = np.asarray((cx, cy, frame.camera.focal_length(frame.viewport), frame.camera.near_plane,
+                         overlap_area_epsilon, _SCREEN_OVERLAP_EPSILON), dtype=dtype)
+    kernel_depths = depths if dtype == np.float64 else np.zeros(depths.shape, dtype=dtype)
     packed = perf_counter_ns()
     for offset in range(0, len(pairs), BATCH_SIZE):
         batch = slice(offset, offset + BATCH_SIZE)
-        evaluate_kernel(points, counts, planes, pair_array[batch], scratch, statuses[batch], depths[batch],
-                        cx, cy, focal, frame.camera.near_plane, overlap_area_epsilon, _SCREEN_OVERLAP_EPSILON)
+        evaluate_kernel(points, counts, planes, pair_array[batch], scratch, statuses[batch], kernel_depths[batch],
+                        params)
     ti.sync()
+    if kernel_depths is not depths:
+        depths[:] = kernel_depths
     computed = perf_counter_ns()
     fallback_rows = np.flatnonzero(statuses < 0)
     for row in fallback_rows:
